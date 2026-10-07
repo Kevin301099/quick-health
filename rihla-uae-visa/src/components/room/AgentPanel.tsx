@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { m, AnimatePresence } from 'motion/react';
 import { ArrowUp, Square } from 'lucide-react';
 import { useStore } from '@/agent/store';
 import { resolveAction, sendUserMessage, startRun, stopRun, isActive } from '@/agent/engine';
@@ -16,7 +16,7 @@ function Dock() {
   return (
     <AnimatePresence initial={false}>
       {pending && item && item.kind === 'ui' && (
-        <motion.section
+        <m.section
           key={pending.id}
           initial={{ y: 28, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -34,7 +34,7 @@ function Dock() {
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <Generated id={item.id} component={item.component} props={item.props} ready act={(o) => resolveAction(pending.id, o, 'you')} readonly={false} spec={false} />
           </div>
-        </motion.section>
+        </m.section>
       )}
     </AnimatePresence>
   );

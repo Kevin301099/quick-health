@@ -1,7 +1,7 @@
 import type { Answers, Issue, Profile } from './types';
 import type { PhotoReport } from './photo';
 import { PRODUCTS, sponsorSalaryNeeded } from './visas';
-import { TODAY, addDays, daysBetween, fmtDate, monthsBetween } from '@/lib/utils';
+import { TODAY, addDays, daysBetween, fmtDate, monthsBetween } from '@/lib/dates';
 
 function norm(s: string) {
   return s.toUpperCase().replace(/[^A-Z]/g, '');
@@ -24,6 +24,8 @@ export interface CheckInput {
   photo: PhotoReport | null;
   /** True when a ticket was provided, so dates can be compared. */
   hasTicket: boolean;
+  /** The date to check against. The demo uses its scripted date; live filing passes the real one. */
+  today?: string;
 }
 
 export interface CheckResult {
@@ -31,7 +33,7 @@ export interface CheckResult {
   passes: string[];
 }
 
-export function runChecks({ answers: a, profile: p, photo, hasTicket }: CheckInput): CheckResult {
+export function runChecks({ answers: a, profile: p, photo, hasTicket, today = TODAY }: CheckInput): CheckResult {
   const issues: Issue[] = [];
   const passes: string[] = [];
   const product = PRODUCTS[a.visa];
@@ -127,7 +129,7 @@ export function runChecks({ answers: a, profile: p, photo, hasTicket }: CheckInp
   }
 
   // The visa must be used within 60 days of issue.
-  const untilArrival = daysBetween(addDays(TODAY, 2), a.arrival);
+  const untilArrival = daysBetween(addDays(today, 2), a.arrival);
   if (untilArrival > 60) {
     issues.push({
       id: 'window',

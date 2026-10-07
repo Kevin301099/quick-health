@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { Check, ShieldCheck } from 'lucide-react';
 import type { DocSlotId, PortalPageId, VisaId } from '@/domain/types';
 import { NATIONALITIES } from '@/domain/nationalities';
@@ -359,7 +359,7 @@ function Pages(c: Ctx) {
 function AgentCursor({ s }: { s: PortalState }) {
   const { x, y, visible, clicking } = s.cursor;
   return (
-    <motion.div
+    <m.div
       aria-hidden
       className="pointer-events-none absolute left-0 top-0 z-20"
       initial={false}
@@ -375,7 +375,7 @@ function AgentCursor({ s }: { s: PortalState }) {
           Rihla
         </span>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

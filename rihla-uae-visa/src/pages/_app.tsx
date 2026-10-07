@@ -1,6 +1,6 @@
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { MotionConfig } from 'motion/react';
+import { LazyMotion, MotionConfig, domAnimation } from 'motion/react';
 import '@/styles/globals.css';
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -11,12 +11,15 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta
           name="description"
-          content="Upload your documents once. Rihla's agent files your UAE visa in a browser you can watch, and asks you only when it needs a code, a signature or a payment."
+          content="Your UAE tourist visa, filed for you. Upload your passport and photo, we check everything, you sign and pay, and the visa arrives by email."
         />
       </Head>
-      <MotionConfig reducedMotion="user">
-        <Component {...pageProps} />
-      </MotionConfig>
+      {/* LazyMotion loads only the animation features we use, instead of the whole library. */}
+      <LazyMotion features={domAnimation} strict>
+        <MotionConfig reducedMotion="user">
+          <Component {...pageProps} />
+        </MotionConfig>
+      </LazyMotion>
     </>
   );
 }

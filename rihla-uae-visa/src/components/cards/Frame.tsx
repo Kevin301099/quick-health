@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { Braces } from 'lucide-react';
 import { Spinner } from '../ui';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,7 @@ function specText(component: string, props: Record<string, unknown>) {
 export function GenFrame({ component, props, children, spec = true }: { component: string; props: Record<string, unknown>; children: ReactNode; spec?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 0.9, 0.24, 1] }} className="min-w-0">
+    <m.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: [0.22, 0.9, 0.24, 1] }} className="min-w-0">
       {children}
       {spec && (
         <>
@@ -48,7 +48,7 @@ export function GenFrame({ component, props, children, spec = true }: { componen
           {open && <pre className="mt-1 max-h-64 overflow-auto rounded-xl border border-line bg-raised p-3 font-mono text-[11.5px] leading-relaxed text-muted">{specText(component, props)}</pre>}
         </>
       )}
-    </motion.div>
+    </m.div>
   );
 }
 

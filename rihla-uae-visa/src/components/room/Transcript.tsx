@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { Check, Hand } from 'lucide-react';
 import type { Item } from '@/agent/types';
 import { Generated } from '../cards/registry';
@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 function ToolRow({ item }: { item: Extract<Item, { kind: 'tool' }> }) {
   const [open, setOpen] = useState(false);
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="pl-[34px]">
+    <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="pl-[34px]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -21,14 +21,14 @@ function ToolRow({ item }: { item: Extract<Item, { kind: 'tool' }> }) {
         <span className={cn('min-w-0 flex-1 font-mono text-[12px] text-faint', open ? 'whitespace-normal break-words' : 'truncate')}>({item.args})</span>
       </button>
       {item.status === 'done' && item.result && <div className="mt-1 pl-2.5 text-[13px] text-muted">{item.result}</div>}
-    </motion.div>
+    </m.div>
   );
 }
 
 function ActionRow({ item }: { item: Extract<Item, { kind: 'action' }> }) {
   const waiting = item.status === 'waiting';
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="pl-[34px]">
+    <m.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="pl-[34px]">
       <div className={cn('flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13.5px]', waiting ? 'bg-[var(--attn-wash)] text-fg' : 'bg-[var(--ok-wash)] text-fg')}>
         {waiting ? <Hand size={15} className="shrink-0 text-attn" aria-hidden /> : <Check size={15} className="shrink-0 text-ok" aria-hidden />}
         <span className="min-w-0 flex-1">
@@ -36,7 +36,7 @@ function ActionRow({ item }: { item: Extract<Item, { kind: 'action' }> }) {
           <span className="text-muted"> · {waiting ? item.title : (item.summary ?? item.title)}</span>
         </span>
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -44,16 +44,16 @@ function View({ item }: { item: Item }) {
   switch (item.kind) {
     case 'user':
       return (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="flex justify-end">
+        <m.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="flex justify-end">
           <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-[14.5px] text-[var(--on-brand)]">{item.text}</div>
-        </motion.div>
+        </m.div>
       );
     case 'text':
       return (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="flex gap-2.5">
+        <m.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="flex gap-2.5">
           <Mark size={24} className="mt-[1px] shrink-0" />
           <p className={cn('min-w-0 max-w-[62ch] text-[15px] leading-relaxed text-fg pretty', item.streaming && 'caret')}>{item.text}</p>
-        </motion.div>
+        </m.div>
       );
     case 'tool':
       return <ToolRow item={item} />;

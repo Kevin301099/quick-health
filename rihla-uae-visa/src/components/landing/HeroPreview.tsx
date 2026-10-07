@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 import { Check, Lock, MousePointer2 } from 'lucide-react';
 import { Pill, Stamp } from '../ui';
 import { cn } from '@/lib/utils';
@@ -82,7 +82,7 @@ function DockCard({ dock }: { dock: Exclude<Dock, null> }) {
   );
 }
 
-export function HeroPreview() {
+export function HeroPreview({ caption = 'A sample filing, sped up. In the real thing you can watch every click, or take over the browser yourself.' }: { caption?: string }) {
   const reduce = useReducedMotion();
   const [i, setI] = useState(3);
   const [paused, setPaused] = useState(false);
@@ -107,9 +107,9 @@ export function HeroPreview() {
               <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-surface px-3 py-1.5 text-[12px] text-muted">
                 <Lock size={12} aria-hidden className="shrink-0" />
                 <AnimatePresence mode="wait" initial={false}>
-                  <motion.span key={stage.url} className="truncate font-mono" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+                  <m.span key={stage.url} className="truncate font-mono" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
                     {stage.url}
-                  </motion.span>
+                  </m.span>
                 </AnimatePresence>
               </div>
               <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-semibold', driving ? 'bg-[var(--brand-wash)] text-brand' : 'bg-[var(--attn-wash)] text-attn')}>
@@ -138,16 +138,16 @@ export function HeroPreview() {
                           <div className={cn('p-input flex !h-8 items-center !px-2.5 !text-[12.5px]', n === active && driving && 'spotlight')} aria-hidden>
                             <AnimatePresence initial={false}>
                               {filled && (
-                                <motion.span key="v" className="truncate" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
+                                <m.span key="v" className="truncate" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
                                   {value}
-                                </motion.span>
+                                </m.span>
                               )}
                             </AnimatePresence>
                           </div>
                           {n === active && driving && (
-                            <motion.span key={`c-${i}`} className="pointer-events-none absolute -bottom-2.5 right-3 text-brand" initial={{ opacity: 0, y: 8, x: 8 }} animate={{ opacity: 1, y: 0, x: 0 }} transition={{ duration: 0.35 }} aria-hidden>
+                            <m.span key={`c-${i}`} className="pointer-events-none absolute -bottom-2.5 right-3 text-brand" initial={{ opacity: 0, y: 8, x: 8 }} animate={{ opacity: 1, y: 0, x: 0 }} transition={{ duration: 0.35 }} aria-hidden>
                               <MousePointer2 size={20} fill="currentColor" />
-                            </motion.span>
+                            </m.span>
                           )}
                         </div>
                       );
@@ -183,22 +183,22 @@ export function HeroPreview() {
             <div className="mt-auto min-h-[148px] border-t border-line bg-surface2 p-4">
               <AnimatePresence mode="wait" initial={false}>
                 {stage.dock ? (
-                  <motion.div key={stage.dock} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}>
+                  <m.div key={stage.dock} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}>
                     <DockCard dock={stage.dock} />
-                  </motion.div>
+                  </m.div>
                 ) : (
-                  <motion.div key="work" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                  <m.div key="work" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
                     <div className="eyebrow">Agent</div>
                     <div className="mt-1 font-display text-[19px] font-semibold leading-tight tracking-[-0.02em]">{stage.cur === 0 ? 'Reading your documents' : 'Filling the form for you'}</div>
                     <p className="mt-1 text-[13px] leading-snug text-muted">{stage.cur === 0 ? '26 fields from 5 documents, each one linked back to its page.' : `Typing into the portal like a person would. ${stage.fields} of 6 fields.`}</p>
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
             </div>
           </div>
         </div>
       </div>
-      <figcaption className="mt-3 text-[12.5px] text-faint">A sample filing, sped up. In the real thing you can watch every click, or take over the browser yourself.</figcaption>
+      <figcaption className="mt-3 text-[12.5px] text-faint">{caption}</figcaption>
     </figure>
   );
 }

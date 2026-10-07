@@ -5,9 +5,39 @@ import { Wordmark } from '../ui';
 import { ChecksReport } from '../cards/results';
 import { Checker } from './Checker';
 import { HeroPreview } from './HeroPreview';
-import { Pricing } from './Pricing';
+import { LiveHeroPreview } from './LiveHeroPreview';
+import { Pricing, type LiveQuote } from './Pricing';
+import { useEffect, useState } from 'react';
+
+/** Prices come from the API in the live product, so the page never disagrees with checkout. */
+function useLiveQuotes(live: boolean) {
+  const [q, setQ] = useState<Record<'30' | '60', LiveQuote> | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    import('@/live/api').then(({ api }) => api<{ quotes: Record<'30' | '60', LiveQuote> }>('/v1/config')).then((c) => setQ(c.quotes), () => undefined);
+  }, [live]);
+  return q;
+}
 
 const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+const LIVE_YOUR_TURN = [
+  {
+    icon: ScrollText,
+    title: 'The declarations',
+    body: 'Prior refusals, deportations, criminal record. These are legal statements, so you answer each one yourself. We never tick a box for you.',
+  },
+  {
+    icon: PenLine,
+    title: 'Your signature',
+    body: 'You check every detail we read from your passport, then type your name to sign. After that the application is locked, so what you pay for is exactly what is filed.',
+  },
+  {
+    icon: CreditCard,
+    title: 'The payment',
+    body: 'The last thing you do. You pay on a secure payment page, and only then does our licensed partner file the visa.',
+  },
+];
 
 const NAV: [string, string][] = [
   ['how', 'How it works'],
@@ -54,6 +84,31 @@ const NEVER = [
   ['Guesses', 'If your name is spelled two ways across documents, it stops and asks which is right.'],
 ];
 
+const LIVE_STEPS = [
+  { who: 'You do this', title: 'Upload your passport and photo', body: 'A ticket and hotel booking help but are optional. Nothing is filed and nothing is paid yet.' },
+  { who: 'Rihla does this', title: 'We read and check everything', body: 'We read your passport, confirm it against its check digits, and flag anything that would get the visa refused.' },
+  { who: 'You, for a moment', title: 'You confirm, sign and pay', body: 'You answer the declarations yourself, type your name to sign, and pay on a secure page. That is the last thing you do.' },
+  { who: 'Our licensed partner', title: 'The visa arrives by email', body: 'Our licensed UAE partner files it. We follow it to the decision and send you the visa as a PDF.' },
+];
+
+const LIVE_NEVER = [
+  ['Sees your card', 'You pay on a secure payment page. The card number never reaches Rihla.'],
+  ['Answers for you', 'Declarations are yours. We show each question and record your answer.'],
+  ['Files before you sign', 'Nothing is filed until you have seen every detail and signed.'],
+  ['Keeps your documents', 'Documents are deleted 30 days after a decision, and unfinished applications after 30 days.'],
+  ['Guesses', 'If something does not add up, like a passport number that fails its check digit, we ask you.'],
+];
+
+const LIVE_FAQ = [
+  ['Is this a government service?', 'No. Rihla is a private service. A UAE tourist visa has to be sponsored by a licensed tourism company, so our licensed partner files your application with the UAE authorities.'],
+  ['What happens to my documents?', 'They are stored encrypted, used only for your application, and deleted 30 days after a decision. Unfinished applications are deleted after 30 days too.'],
+  ['Is my card safe?', 'You pay on a secure payment page run by our payment provider. Rihla never sees or stores your card number.'],
+  ['How long does it take?', 'Uploading and checking takes a few minutes. The authorities list about 48 hours for a decision, which is not guaranteed.'],
+  ['What if the application is refused?', 'Nobody can promise an approval. We catch the avoidable mistakes before filing, and if the authorities refuse, we show you the reason and what you can do next.'],
+  ['What if you cannot file it?', 'If we cannot file your application after you pay, for example because the partner needs a document you cannot provide, you get a full refund.'],
+  ['Which passports can use Rihla?', 'Rihla files the single-entry tourist visa for 30 or 60 days for passports that need a visa in advance. The checker at the top tells you in a second whether yours does.'],
+];
+
 const FAQ = [
   ['Is this a government service?', 'No. Rihla is not affiliated with any government. In this demo the agent files into a sandbox portal that imitates a government site, so you can see the whole journey without filing anything real.'],
   ['What happens to my documents?', 'In this demo they stay in your browser. The photo check, for example, is measured on the pixels on your own device. Nothing is uploaded to a server.'],
@@ -76,12 +131,13 @@ function H2({ children, className = '' }: { children: React.ReactNode; className
   return <h2 className={`font-display text-[32px] font-bold leading-[1.04] tracking-[-0.035em] balance md:text-[40px] lg:text-[46px] ${className}`}>{children}</h2>;
 }
 
-export function Landing({ onApply }: { onApply: () => void }) {
+export function Landing({ onApply, live = false }: { onApply: () => void; live?: boolean }) {
   const { theme, toggle } = useTheme();
+  const liveQuotes = useLiveQuotes(live);
 
   return (
     <div className="min-h-full bg-bg text-fg">
-      <div className="border-b border-line bg-surface2 px-6 py-1.5 text-center text-[12.5px] text-muted">A working demo. It files into a sandbox portal, not a government system.</div>
+      {!live && <div className="border-b border-line bg-surface2 px-6 py-1.5 text-center text-[12.5px] text-muted">A working demo. It files into a sandbox portal, not a government system.</div>}
 
       <header className="sticky z-30 border-b border-line bg-bg/90 backdrop-blur" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
         <div className="mx-auto flex max-w-[1280px] items-center justify-between gap-4 px-6 py-3">
@@ -119,7 +175,9 @@ export function Landing({ onApply }: { onApply: () => void }) {
                 <span className="text-brand">filed for you.</span>
               </h1>
               <p className="mt-6 max-w-[52ch] text-[18px] leading-relaxed text-muted pretty">
-                Upload your documents once. An agent opens the portal, fills in every field and checks its own work. It stops only when something is yours to do: a code, a declaration, a signature, the payment. You do it on screen, and it carries on.
+                {live
+                  ? 'Upload your passport and photo. We read them, check everything that gets visas refused, and file through our licensed UAE partner. You answer, sign and pay, and the visa arrives by email.'
+                  : 'Upload your documents once. An agent opens the portal, fills in every field and checks its own work. It stops only when something is yours to do: a code, a declaration, a signature, the payment. You do it on screen, and it carries on.'}
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <button type="button" className="btn btn-primary btn-lg" onClick={onApply}>
@@ -130,11 +188,18 @@ export function Landing({ onApply }: { onApply: () => void }) {
                 </button>
               </div>
               <dl className="mt-10 grid max-w-[520px] grid-cols-3 gap-4 border-t border-line pt-5">
-                {[
-                  ['5', 'documents, uploaded once'],
-                  ['4', 'moments that need you'],
-                  ['0', 'card numbers the agent sees'],
-                ].map(([n, l]) => (
+                {(live
+                  ? [
+                      ['2', 'documents required'],
+                      ['3', 'steps that need you'],
+                      ['0', 'card numbers we see'],
+                    ]
+                  : [
+                      ['5', 'documents, uploaded once'],
+                      ['4', 'moments that need you'],
+                      ['0', 'card numbers the agent sees'],
+                    ]
+                ).map(([n, l]) => (
                   <div key={l}>
                     <dt className="font-display text-[34px] font-bold leading-none tracking-[-0.03em] tnum">{n}</dt>
                     <dd className="mt-1.5 text-[13px] leading-snug text-muted">{l}</dd>
@@ -143,7 +208,7 @@ export function Landing({ onApply }: { onApply: () => void }) {
               </dl>
             </div>
             <div className="min-w-0 max-w-[720px] xl:max-w-none">
-              <HeroPreview />
+              {live ? <LiveHeroPreview /> : <HeroPreview />}
             </div>
           </div>
         </Section>
@@ -167,7 +232,7 @@ export function Landing({ onApply }: { onApply: () => void }) {
           <ol className="relative mt-12 grid gap-10 lg:grid-cols-4 lg:gap-6">
             <span className="absolute bottom-5 left-[19px] top-5 border-l-2 border-dashed lg:hidden" style={{ borderColor: 'var(--line-strong)' }} aria-hidden />
             <span className="absolute left-5 top-[19px] hidden w-[calc(75%-14px)] border-t-2 border-dashed lg:block" style={{ borderColor: 'var(--line-strong)' }} aria-hidden />
-            {STEPS.map((s, i) => (
+            {(live ? LIVE_STEPS : STEPS).map((s, i) => (
               <li key={s.title} className="relative flex gap-4 lg:block">
                 <span className="relative grid size-10 shrink-0 place-items-center rounded-full border-2 border-brand bg-bg font-display text-[17px] font-bold text-brand">{i + 1}</span>
                 <div className="min-w-0 lg:mt-5">
@@ -184,11 +249,15 @@ export function Landing({ onApply }: { onApply: () => void }) {
         <Section className="border-t border-line bg-surface py-24">
           <div className="grid gap-12 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
             <div className="lg:sticky lg:top-24 lg:self-start">
-              <H2>Four things only you can do.</H2>
-              <p className="mt-4 max-w-[44ch] text-[16.5px] leading-relaxed text-muted pretty">The agent does everything else. When it reaches one of these it pins a single card to the screen, tells you what it needs, and waits. You never have to guess what happens next, or watch a spinner and wonder.</p>
+              <H2>{live ? 'Three things only you can do.' : 'Four things only you can do.'}</H2>
+              <p className="mt-4 max-w-[44ch] text-[16.5px] leading-relaxed text-muted pretty">
+                {live
+                  ? 'We do everything else: reading, checking, filing and following up. If the authorities need something more, we email you and show exactly what on your application page.'
+                  : 'The agent does everything else. When it reaches one of these it pins a single card to the screen, tells you what it needs, and waits. You never have to guess what happens next, or watch a spinner and wonder.'}
+              </p>
             </div>
             <ol className="ledger">
-              {YOUR_TURN.map(({ icon: Icon, title, body }) => (
+              {(live ? LIVE_YOUR_TURN : YOUR_TURN).map(({ icon: Icon, title, body }) => (
                 <li key={title} className="flex gap-5 py-6 first:pt-0">
                   <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--attn-wash)] text-attn">
                     <Icon size={22} aria-hidden />
@@ -212,24 +281,41 @@ export function Landing({ onApply }: { onApply: () => void }) {
                 act={() => undefined}
                 readonly
                 props={{
-                  passes: ['Passport is valid for 33 months after arrival', 'You will arrive within 60 days of the visa being issued', 'Insurance covers the whole stay', 'Your name matches across passport, ticket and insurance'],
-                  issues: [
-                    { title: 'The photo background is too dark', risk: 'medium' },
-                    { title: 'Your arrival date shows up as two different days', risk: 'medium' },
-                  ],
+                  title: live ? 'What we checked' : undefined,
+                  passes: live
+                    ? ['Passport number, birth date and expiry confirmed by the check digits', 'Passport is valid for 28 months after arrival', 'You will arrive within 60 days of the visa being issued', 'Your 9-day stay fits the 30-day visa']
+                    : ['Passport is valid for 33 months after arrival', 'You will arrive within 60 days of the visa being issued', 'Insurance covers the whole stay', 'Your name matches across passport, ticket and insurance'],
+                  issues: live
+                    ? [{ title: 'The photo background is too dark', risk: 'medium' }]
+                    : [
+                        { title: 'The photo background is too dark', risk: 'medium' },
+                        { title: 'Your arrival date shows up as two different days', risk: 'medium' },
+                      ],
                 }}
               />
             </div>
             <div>
-              <H2>It checks its own work first.</H2>
-              <p className="mt-4 max-w-[48ch] text-[16.5px] leading-relaxed text-muted pretty">Most refusals are small, avoidable mistakes. So the agent looks for them before anything is filed, and again after.</p>
+              <H2>{live ? 'Checked before you pay.' : 'It checks its own work first.'}</H2>
+              <p className="mt-4 max-w-[48ch] text-[16.5px] leading-relaxed text-muted pretty">
+                {live
+                  ? 'Most refusals are small, avoidable mistakes. We look for them while you upload, and show you each one with a way to fix it, before you pay anything.'
+                  : 'Most refusals are small, avoidable mistakes. So the agent looks for them before anything is filed, and again after.'}
+              </p>
               <ul className="mt-6 grid gap-3 text-[15px] text-fg">
-                {[
-                  'Passport valid long enough, names the same on every document.',
-                  'Photo measured on the pixels: shape, background and file size, on your own device.',
-                  'Arrival and stay dates that fit the visa window.',
-                  'After filing, it reads the review page back and compares every field with what you approved.',
-                ].map((t) => (
+                {(live
+                  ? [
+                      'Passport number, birth date and expiry proven by the check digits printed in the code lines.',
+                      'Passport valid for six months after you arrive.',
+                      'Photo measured on its pixels: shape, background and size. A dark background can be fixed in one click.',
+                      'Arrival within the 60-day window, and a stay that fits the visa you chose.',
+                    ]
+                  : [
+                      'Passport valid long enough, names the same on every document.',
+                      'Photo measured on the pixels: shape, background and file size, on your own device.',
+                      'Arrival and stay dates that fit the visa window.',
+                      'After filing, it reads the review page back and compares every field with what you approved.',
+                    ]
+                ).map((t) => (
                   <li key={t} className="flex gap-3">
                     <Eye size={18} className="mt-[3px] shrink-0 text-brand" aria-hidden />
                     <span className="pretty">{t}</span>
@@ -247,7 +333,7 @@ export function Landing({ onApply }: { onApply: () => void }) {
             <p className="mt-4 text-[16.5px] leading-relaxed text-muted pretty">The government fee, our flat service fee and VAT, added up. No surprises on the last page.</p>
           </div>
           <div className="mt-10">
-            <Pricing onApply={onApply} />
+            {!live ? <Pricing onApply={onApply} /> : liveQuotes ? <Pricing onApply={onApply} live={liveQuotes} /> : <div className="skeleton h-72 max-w-[620px]" aria-label="Loading prices" />}
           </div>
         </Section>
 
@@ -256,10 +342,10 @@ export function Landing({ onApply }: { onApply: () => void }) {
           <div className="mx-auto max-w-[1280px] px-6">
             <div className="grid gap-12 lg:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]">
               <div>
-                <H2>What the agent will never do.</H2>
-                <p className="mt-4 max-w-[48ch] text-[16.5px] leading-relaxed text-[var(--on-band-muted)] pretty">A fast agent is only useful if it knows where to stop.</p>
+                <H2>{live ? 'What Rihla will never do.' : 'What the agent will never do.'}</H2>
+                <p className="mt-4 max-w-[48ch] text-[16.5px] leading-relaxed text-[var(--on-band-muted)] pretty">{live ? 'Filing fast matters less than filing right, and knowing where to stop.' : 'A fast agent is only useful if it knows where to stop.'}</p>
                 <ul className="mt-8">
-                  {NEVER.map(([t, d]) => (
+                  {(live ? LIVE_NEVER : NEVER).map(([t, d]) => (
                     <li key={t} className="flex gap-4 border-t py-4" style={{ borderColor: 'var(--band-line)' }}>
                       <Ban size={20} className="mt-0.5 shrink-0 text-[var(--band-accent)]" aria-hidden />
                       <div className="min-w-0">
@@ -272,9 +358,18 @@ export function Landing({ onApply }: { onApply: () => void }) {
               </div>
               <aside className="self-start rounded-[22px] border p-6" style={{ borderColor: 'var(--band-line)' }}>
                 <ShieldCheck size={24} className="text-[var(--band-accent)]" aria-hidden />
-                <h3 className="mt-3 font-display text-[24px] font-semibold leading-tight tracking-[-0.02em]">Straight talk about this demo</h3>
-                <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">The portal in this demo is a sandbox. It looks plain on purpose and is labelled as one. Nothing you do here is filed with, or known to, any government.</p>
-                <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">Real filings would go through a licensed UAE sponsor partner, with a legal review and a rules service a person keeps current. Fees and entry rules shown here were compiled from public sources on {RULES_REVIEWED}.</p>
+                <h3 className="mt-3 font-display text-[24px] font-semibold leading-tight tracking-[-0.02em]">{live ? 'How your visa is filed' : 'Straight talk about this demo'}</h3>
+                {live ? (
+                  <>
+                    <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">UAE law requires a tourist visa to be sponsored by a licensed tourism establishment. Rihla prepares and checks your application; our licensed partner files it with the UAE authorities, who make the decision.</p>
+                    <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">Rihla is a private company and is not part of any government. Official information is published by the authorities below.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">The portal in this demo is a sandbox. It looks plain on purpose and is labelled as one. Nothing you do here is filed with, or known to, any government.</p>
+                    <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">Real filings would go through a licensed UAE sponsor partner, with a legal review and a rules service a person keeps current. Fees and entry rules shown here were compiled from public sources on {RULES_REVIEWED}.</p>
+                  </>
+                )}
                 <ul className="mt-4 grid gap-1.5 font-mono text-[12.5px] text-[var(--on-band-muted)]">
                   {SOURCES.map((s) => (
                     <li key={s.domain}>
@@ -294,7 +389,7 @@ export function Landing({ onApply }: { onApply: () => void }) {
               <H2>Fair things to ask.</H2>
             </div>
             <div className="ledger border-y border-line">
-              {FAQ.map(([q, a]) => (
+              {(live ? LIVE_FAQ : FAQ).map(([q, a]) => (
                 <details key={q} className="group py-1">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg py-4 text-[17px] font-medium text-fg [&::-webkit-details-marker]:hidden">
                     <span className="min-w-0">{q}</span>
@@ -332,7 +427,9 @@ export function Landing({ onApply }: { onApply: () => void }) {
                 رحلة
               </span>
             </div>
-            <p className="mt-3 max-w-[56ch] text-[13px] leading-relaxed text-faint">Rihla means journey. This is a demo and is not affiliated with any government. Entry rules and fees were compiled from public sources on {RULES_REVIEWED} and must be verified before you rely on them.</p>
+            <p className="mt-3 max-w-[56ch] text-[13px] leading-relaxed text-faint">{live
+                ? 'Rihla means journey. Rihla is a private visa service and is not affiliated with any government. Visas are filed through a licensed UAE tourism partner.'
+                : `Rihla means journey. This is a demo and is not affiliated with any government. Entry rules and fees were compiled from public sources on ${RULES_REVIEWED} and must be verified before you rely on them.`}</p>
           </div>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => jump('top')}>
             Back to top

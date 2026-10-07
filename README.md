@@ -1,6 +1,6 @@
 # quick-health
 
-- [`rihla-uae-visa/`](rihla-uae-visa): Rihla, a web app where an AI agent files a UAE visa application for the traveller. You upload your documents first, the agent works in a browser you can watch, and it stops on screen whenever something needs you. Next.js source, desktop first.
+- [`rihla-uae-visa/`](rihla-uae-visa): Rihla, a web app that files UAE tourist visas. Live product (Next.js front end plus the API in `rihla-uae-visa/backend`) and a self-contained demo. Launch checklist and running costs: [`rihla-uae-visa/docs/GO-LIVE.md`](rihla-uae-visa/docs/GO-LIVE.md).
 - [`quickhealth-site/`](quickhealth-site): QuickHealth, a healthy-food delivery concept site (lab-tested, verified brands). Compiled static build of the published site.
 
 The earlier agency-desk prototype (`rihla-visa-desk`) is kept in git history only.

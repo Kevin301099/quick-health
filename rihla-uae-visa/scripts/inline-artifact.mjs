@@ -1,7 +1,7 @@
 // Packs the static export into one self-contained HTML fragment for publishing as a single-file artifact.
 // The host supplies <!doctype>, <html>, <head> and <body>, so this writes only the page content:
 // title, font links, one <style>, the app markup, then every script inlined in its original order.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const OUT = 'out';
@@ -25,9 +25,15 @@ const css = [...head.matchAll(/<link rel="stylesheet" href="(\/_next\/[^"]+\.css
 
 const safeJs = (src) => src.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
 
-const scripts = [...head.matchAll(/<script\b[^>]*\bsrc="(\/_next\/[^"]+\.js)"[^>]*><\/script>/g)]
-  .filter((m) => !/noModule/i.test(m[0]))
-  .map((m) => `<script>${safeJs(readFileSync(join(OUT, m[1]), 'utf8'))}</script>`);
+const entry = [...head.matchAll(/<script\b[^>]*\bsrc="(\/_next\/[^"]+\.js)"[^>]*><\/script>/g)].filter((m) => !/noModule/i.test(m[0])).map((m) => m[1]);
+// Screens load on demand in the hosted site. A single-file page cannot fetch them, so every remaining chunk is
+// inlined too: webpack finds them already registered and never goes to the network.
+const chunkDir = join(OUT, '_next/static/chunks');
+const lazy = readdirSync(chunkDir)
+  .filter((f) => f.endsWith('.js') && !f.startsWith('polyfills'))
+  .map((f) => `/_next/static/chunks/${f}`)
+  .filter((p) => !entry.includes(p));
+const scripts = [...entry, ...lazy].map((p) => `<script>${safeJs(readFileSync(join(OUT, p), 'utf8'))}</script>`);
 
 const fragment = [
   `<title>${title}</title>`,

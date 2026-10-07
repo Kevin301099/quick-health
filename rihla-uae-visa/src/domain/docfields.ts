@@ -1,5 +1,5 @@
 import type { Answers, DocField, DocSlotId, Profile } from './types';
-import { fmtDate } from '@/lib/utils';
+import { fmtDate } from '@/lib/dates';
 import { byCode } from './nationalities';
 
 const f = (key: string, label: string, value: string, confidence = 0.98): DocField => ({ key, label, value, confidence });

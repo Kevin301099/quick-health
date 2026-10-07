@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { m } from 'motion/react';
 import { Check, Circle, TriangleAlert } from 'lucide-react';
 import type { PermitData } from '@/agent/types';
 import type { Risk, VisaId } from '@/domain/types';
@@ -8,9 +8,9 @@ import { CardShell } from './Frame';
 import { Pill, Spinner, Stamp } from '../ui';
 import { aed, cn, fmtDate } from '@/lib/utils';
 
-export function ChecksReport({ props }: CardProps<{ passes: string[]; issues: { title: string; risk: Risk }[] }>) {
+export function ChecksReport({ props }: CardProps<{ passes: string[]; issues: { title: string; risk: Risk }[]; title?: string }>) {
   return (
-    <CardShell eyebrow="Checks" title="What I found" right={<Pill tone={props.issues.length ? 'attn' : 'ok'}>{props.issues.length ? `${props.issues.length} for you` : 'All clear'}</Pill>}>
+    <CardShell eyebrow="Checks" title={props.title ?? 'What I found'} right={<Pill tone={props.issues.length ? 'attn' : 'ok'}>{props.issues.length ? `${props.issues.length} for you` : 'All clear'}</Pill>}>
       <ul className="ledger">
         {props.passes.map((p) => (
           <li key={p} className="flex items-start gap-3 py-2 text-[14px] text-fg">
@@ -58,9 +58,9 @@ export function StatusTimeline({ props }: CardProps<{ steps: { label: string; de
             {i < props.steps.length - 1 && <span className="absolute left-[9px] top-5 h-[calc(100%-12px)] w-px" style={{ background: s.status === 'done' ? 'var(--brand)' : 'var(--line-strong)' }} aria-hidden />}
             <span className="relative mt-0.5 flex size-[19px] shrink-0 items-center justify-center">
               {s.status === 'done' ? (
-                <motion.span initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex size-[19px] items-center justify-center rounded-full bg-brand text-[var(--on-brand)]">
+                <m.span initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex size-[19px] items-center justify-center rounded-full bg-brand text-[var(--on-brand)]">
                   <Check size={12} strokeWidth={3} />
-                </motion.span>
+                </m.span>
               ) : s.status === 'active' ? (
                 <span className="relative flex size-[19px] items-center justify-center rounded-full border-2 border-brand ring-pulse" />
               ) : (
@@ -82,7 +82,7 @@ export function StatusTimeline({ props }: CardProps<{ steps: { label: string; de
   );
 }
 
-export function PermitReady({ props }: CardProps<{ permit: PermitData; name: string }>) {
+export function PermitReady({ props }: CardProps<{ permit: PermitData; name: string; note?: string }>) {
   const p = props.permit;
   const bars = [3, 1, 2, 1, 3, 2, 1, 1, 3, 1, 2, 3, 1, 2, 1, 3, 2, 1, 2, 3, 1, 1, 2, 3, 1, 2, 1, 3, 2, 1];
   return (
@@ -127,7 +127,7 @@ export function PermitReady({ props }: CardProps<{ permit: PermitData; name: str
               <span key={i} className="block bg-fg" style={{ width: b, height: i % 4 === 0 ? 40 : 34 }} />
             ))}
           </div>
-          <p className="max-w-[28ch] text-right text-[12px] leading-snug text-faint">Sandbox permit for demonstration. Not valid for travel.</p>
+          <p className="max-w-[28ch] text-right text-[12px] leading-snug text-faint">{props.note ?? 'Sandbox permit for demonstration. Not valid for travel.'}</p>
         </div>
       </div>
     </div>

@@ -1,6 +1,29 @@
 # Rihla UAE Visa
 
-A web app (desktop first) where an AI agent files a **UAE visa** application for the traveller.
+A web app (desktop first) that files **UAE tourist visas** for travellers. It runs two ways from one codebase:
+
+- **Live product.** Build with `NEXT_PUBLIC_API_URL` pointing at the API in `backend/`. Real sign-in, uploads, passport reading, checks, signature, Stripe payment, filing through a licensed partner, status tracking, visa download and an ops console. See [`docs/GO-LIVE.md`](docs/GO-LIVE.md) for what you need to launch and what it costs to run.
+- **Demo.** Build without it. A self-contained, scripted walkthrough that files into a sandbox portal you can watch. This is what the published preview shows.
+
+## Live product
+
+1. **Trip.** Passport nationality (with an eligibility check), dates, emirate, 30 or 60 days. Sign in with an emailed six-digit code.
+2. **Documents.** Passport and photo are required; ticket, hotel and insurance are optional. Files go straight to storage. The passport is read by Claude and the reading is proven by the check digits in its machine-readable zone. The photo is measured in the browser, and a dark background can be fixed in one click.
+3. **Details and checks.** Fields are pre-filled from the passport; anything uncertain is highlighted. Passport validity, the 60-day window and stay length are checked before payment.
+4. **Sign.** The traveller answers the declarations and types their name. The application is then locked.
+5. **Pay.** Stripe hosted checkout in AED. The card never reaches Rihla.
+6. **Filed and tracked.** The partner files it (through the ops console or the partner's API). The traveller gets an email at every change and downloads the visa PDF.
+
+Run both halves locally:
+
+```bash
+cd backend && npm install && npm run dev            # API on :8787 (embedded database, files on disk, emails in the console)
+cd .. && NEXT_PUBLIC_API_URL=http://localhost:8787 npm run dev   # web app on :3000
+```
+
+Sign-in codes print in the API console. Payments use a test checkout page, and the sandbox filer approves after 20 seconds. Add yourself to `OPS_EMAILS` to open the ops console at `#ops`.
+
+## The demo
 
 1. **Check.** Pick your passport. The app tells you whether you need a visa at all.
 2. **Upload everything first.** Passport, photo, ticket, hotel and insurance (a family visit adds the sponsor's papers). Nothing is filed yet.
@@ -21,6 +44,8 @@ Not done in the demo: reading your own uploaded files (no OCR, so you confirm th
 
 ## Layout
 
+- `backend/`: the API (Hono, TypeScript). Applications, documents, passport reading, payments, filing providers, ops endpoints, background jobs. Tests in `backend/test`.
+- `src/live`: the live product screens (sign-in, trip, application, payment, tracking, ops console).
 - `src/domain`: visa products and fees, eligibility, sample travellers, cross-checks, photo analysis.
 - `src/agent`: store, engine (human-in-the-loop `ask`, pause, takeover), browser bridge, flows, local answers.
 - `src/portal`: the sandbox portal (logic, view, store wiring).
@@ -29,11 +54,11 @@ Not done in the demo: reading your own uploaded files (no OCR, so you confirm th
 - `src/components/start`: the eligibility, trip and document-upload wizard.
 - `src/components/landing`: the landing page.
 
-## Run it
+## Run the demo
 
 ```bash
 npm install
-npm run dev            # http://localhost:3000
+npm run dev            # http://localhost:3000 (no API URL: demo mode)
 npm run typecheck
 npm run design-lint    # Impeccable anti-pattern detector
 npm run build:artifact # static export plus one self-contained HTML in artifact/index.html

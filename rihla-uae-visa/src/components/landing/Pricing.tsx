@@ -7,9 +7,20 @@ import { aed, cn } from '@/lib/utils';
 
 type Days = 30 | 60;
 
-function FareTicket({ id, days, onApply }: { id: VisaId; days: Days; onApply: (id: VisaId, days: Days) => void }) {
+export interface LiveQuote {
+  govFee: number;
+  serviceFee: number;
+  vat: number;
+  total: number;
+}
+
+function FareTicket({ id, days, onApply, live }: { id: VisaId; days: Days; onApply: (id: VisaId, days: Days) => void; live?: LiveQuote }) {
   const p = PRODUCTS[id];
-  const q = quote(id, days);
+  const demo = quote(id, days);
+  const q = live
+    ? { govAED: live.govFee, serviceAED: live.serviceFee, govVatAED: live.vat, serviceVatAED: 0, totalAED: live.total }
+    : demo;
+  const slots = live ? (['passport', 'photo'] as const) : p.slots;
   return (
     <div className="ticket h-full">
       <div className="ticket-body flex h-full flex-col overflow-hidden" style={{ ['--y' as string]: 'calc(100% - 232px)' }}>
@@ -18,13 +29,14 @@ function FareTicket({ id, days, onApply }: { id: VisaId; days: Days; onApply: (i
           <p className="mt-2 max-w-[40ch] text-[14.5px] text-muted pretty">{p.blurb}</p>
           <div className="mt-5 eyebrow">You upload</div>
           <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
-            {p.slots.map((s) => (
+            {slots.map((s) => (
               <li key={s} className="flex items-start gap-2 text-[13.5px] text-fg">
                 <Check size={14} className="mt-[3px] shrink-0 text-brand" aria-hidden />
                 {SLOTS[s].label}
               </li>
             ))}
           </ul>
+          {live && <p className="mt-2 text-[13px] text-muted">A return ticket and hotel booking are optional and help approval.</p>}
           <p className="mt-4 text-[13px] text-muted">Processing: {p.processing}</p>
         </div>
         <div className="perf mx-6" />
@@ -54,7 +66,7 @@ function FareTicket({ id, days, onApply }: { id: VisaId; days: Days; onApply: (i
   );
 }
 
-export function Pricing({ onApply }: { onApply: () => void }) {
+export function Pricing({ onApply, live }: { onApply: () => void; live?: Record<'30' | '60', LiveQuote> }) {
   const [days, setDays] = useState<Days>(30);
   const setAnswers = useStore((s) => s.setAnswers);
   const pick = (visa: VisaId, d: Days) => {
@@ -78,12 +90,40 @@ export function Pricing({ onApply }: { onApply: () => void }) {
           </button>
         ))}
       </div>
-      <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <FareTicket id="tourist" days={days} onApply={pick} />
-        <FareTicket id="family" days={days} onApply={pick} />
-      </div>
+      {live ? (
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          <FareTicket id="tourist" days={days} onApply={pick} live={live[String(days) as '30' | '60']} />
+          <div className="self-start">
+            <h3 className="font-display text-[22px] font-semibold tracking-[-0.02em]">What the price covers</h3>
+            <ul className="mt-4 grid gap-3">
+              {[
+                ['Your passport read for you', 'The numbers and dates are confirmed against the check digits printed on the page.'],
+                ['Checks before you pay', 'Passport validity, dates, photo shape and background, and the 60-day window.'],
+                ['Filing by a licensed partner', 'A UAE tourist visa must be sponsored by a licensed tourism company. Ours files it for you.'],
+                ['Updates by email', 'At every change, and the moment we need something from you.'],
+                ['Your visa as a PDF', 'Download it from your application page, ready to print or show on your phone.'],
+              ].map(([t, d]) => (
+                <li key={t} className="flex gap-3">
+                  <Check size={18} className="mt-[3px] shrink-0 text-brand" aria-hidden />
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-semibold text-fg">{t}</div>
+                    <div className="text-[14px] text-muted pretty">{d}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          <FareTicket id="tourist" days={days} onApply={pick} />
+          <FareTicket id="family" days={days} onApply={pick} />
+        </div>
+      )}
       <p className="mt-4 max-w-[70ch] text-[12.5px] text-faint">
-        Government fees are as reported for October 2026 and are paid on the government’s own page. The Rihla service fee of AED 99 is a placeholder for this demo. Totals include 5% VAT.
+        {live
+          ? 'The government fee is passed on exactly as charged. Totals include 5% VAT. If we cannot file your application, you get your money back.'
+          : 'Government fees are as reported for October 2026 and are paid on the government’s own page. The Rihla service fee of AED 99 is a placeholder for this demo. Totals include 5% VAT.'}
       </p>
     </div>
   );
