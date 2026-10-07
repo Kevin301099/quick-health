@@ -2,10 +2,23 @@
 
 A web app (desktop first) that files **UAE tourist visas** for travellers. It runs two ways from one codebase:
 
-- **Live product.** Build with `NEXT_PUBLIC_API_URL` pointing at the API in `backend/`. Real sign-in, uploads, passport reading, checks, signature, Stripe payment, filing through a licensed partner, status tracking, visa download and an ops console. See [`docs/GO-LIVE.md`](docs/GO-LIVE.md) for what you need to launch and what it costs to run.
+- **Live product.** Build with `NEXT_PUBLIC_API_URL` pointing at the API in `backend/`. Real sign-in, uploads, passport reading and checks, then one of two endings:
+  - **Free routes:** the traveller applies on the official site themselves, and the Rihla Filler extension fills the form in their browser.
+  - **Paid route:** signature, Stripe payment and filing through a licensed partner, with status tracking, visa download and an ops console.
+
+  See [`docs/GO-LIVE.md`](docs/GO-LIVE.md) for what you need to launch and what it costs to run.
 - **Demo.** Build without it. A self-contained, scripted walkthrough that files into a sandbox portal you can watch. This is what the published preview shows.
 
 ## Live product
+
+**Free routes** (the 5-year visa on GDRFA or ICP, or an airline's visa):
+
+1. **Trip and route.** Passport nationality, the route, and dates.
+2. **Documents and checks.** As in the paid route below.
+3. **Fill the official form.** The traveller sends their details to Rihla Filler, signs in to the official site, and clicks **Fill this page** on each page of the form.
+4. **Submit.** The traveller answers the declarations, pays and submits there, then tells Rihla, which deletes the documents a week later.
+
+**Paid route** (filed by a licensed partner):
 
 1. **Trip.** Passport nationality (with an eligibility check), dates, emirate, 30 or 60 days. Sign in with an emailed six-digit code.
 2. **Documents.** Passport and photo are required; ticket, hotel and insurance are optional. Files go straight to storage. The passport is read by Claude and the reading is proven by the check digits in its machine-readable zone. The photo is measured in the browser, and a dark background can be fixed in one click.
@@ -46,6 +59,7 @@ Not done in the demo: reading your own uploaded files (no OCR, so you confirm th
 
 ## Layout
 
+- `extension/`: Rihla Filler, the browser extension that fills official visa forms in the traveller's own browser for the free routes. Tests load it in Chromium against replica forms.
 - `backend/`: the API (Hono, TypeScript). Applications, documents, passport reading with spending guards, payments, filing providers, ops endpoints, background jobs. Runs as a Node server, a container, or on AWS Lambda (`src/lambda.ts`, `deploy/template.yaml`). Tests in `backend/test` (embedded Postgres by default, or a real one with `TEST_DATABASE_URL`).
 - `src/live`: the live product screens (sign-in, trip, application, payment, tracking, ops console).
 - `src/domain`: visa products and fees, eligibility, sample travellers, cross-checks, photo analysis.

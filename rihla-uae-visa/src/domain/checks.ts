@@ -26,6 +26,11 @@ export interface CheckInput {
   hasTicket: boolean;
   /** The date to check against. The demo uses its scripted date; live filing passes the real one. */
   today?: string;
+  /**
+   * A multiple-entry visa (the 5-year tourist visa) is not tied to one trip: it allows up to `maxStay` days a visit
+   * and has no "use within 60 days" window. Leave both unset for a single-entry visa of `answers.days`.
+   */
+  multiEntry?: { maxStay: number };
 }
 
 export interface CheckResult {
@@ -33,7 +38,7 @@ export interface CheckResult {
   passes: string[];
 }
 
-export function runChecks({ answers: a, profile: p, photo, hasTicket, today = TODAY }: CheckInput): CheckResult {
+export function runChecks({ answers: a, profile: p, photo, hasTicket, today = TODAY, multiEntry }: CheckInput): CheckResult {
   const issues: Issue[] = [];
   const passes: string[] = [];
   const product = PRODUCTS[a.visa];
@@ -128,9 +133,11 @@ export function runChecks({ answers: a, profile: p, photo, hasTicket, today = TO
     }
   }
 
-  // The visa must be used within 60 days of issue.
+  // A single-entry visa must be used within 60 days of issue.
   const untilArrival = daysBetween(addDays(today, 2), a.arrival);
-  if (untilArrival > 60) {
+  if (multiEntry) {
+    // Valid for five years from issue, so any arrival date works.
+  } else if (untilArrival > 60) {
     issues.push({
       id: 'window',
       rule: 'R-ARR-01',
@@ -149,21 +156,22 @@ export function runChecks({ answers: a, profile: p, photo, hasTicket, today = TO
 
   // Stay length against the visa
   const stay = daysBetween(a.arrival, a.departure);
-  if (stay > a.days) {
+  const allowed = multiEntry?.maxStay ?? a.days;
+  if (stay > allowed) {
     issues.push({
       id: 'stay',
       rule: 'R-STAY-01',
       risk: 'medium',
-      title: `Your stay is ${stay} days. This visa allows ${a.days}`,
+      title: `Your stay is ${stay} days. This visa allows ${allowed}${multiEntry ? ' a visit' : ''}`,
       detail: `You arrive on ${fmtDate(a.arrival)} and leave on ${fmtDate(a.departure)}. Staying past the visa costs AED 50 a day, with no grace period since April 2026.`,
-      evidence: [{ label: 'Stay', value: `${stay} days` }, { label: 'Visa', value: `${a.days} days` }],
+      evidence: [{ label: 'Stay', value: `${stay} days` }, { label: 'Visa', value: `${allowed} days` }],
       options: [
-        ...(a.days === 30 ? [{ id: 'extend', label: 'Switch to the 60-day visa', detail: `Covers the whole stay. Government fee ${PRODUCTS[a.visa].fees[60]} AED`, recommended: true }] : []),
+        ...(a.days === 30 && !multiEntry ? [{ id: 'extend', label: 'Switch to the 60-day visa', detail: `Covers the whole stay. Government fee ${PRODUCTS[a.visa].fees[60]} AED`, recommended: true }] : []),
         { id: 'keep', label: 'Keep it as it is', detail: 'You would need to leave on time or extend later' },
       ],
     });
   } else {
-    passes.push(`Your ${stay}-day stay fits the ${a.days}-day visa`);
+    passes.push(multiEntry ? `Your ${stay}-day stay fits the ${allowed}-day limit for each visit` : `Your ${stay}-day stay fits the ${a.days}-day visa`);
   }
 
   // Insurance

@@ -41,6 +41,8 @@ export function docFields(slot: DocSlotId, p: Profile, a: Answers): DocField[] {
         f('mrz2', 'MRZ line 2', l2, 0.99),
       ];
     }
+    case 'bank':
+      return [];
     case 'photo':
       return [f('shape', 'Shape', 'Checked below', 0.95), f('background', 'Background', 'Checked below', 0.95)];
     case 'ticket':

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Rihla Filler</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon-32.png" width="24" height="24" alt="" />
+      <div>
+        <div class="ttl">Rihla Filler</div>
+        <div class="sub">Fills official visa forms with your details</div>
+      </div>
+    </header>
+
+    <section id="empty" hidden>
+      <p class="lead">Nothing to fill yet.</p>
+      <p>In Rihla, open your application and press <strong>Send to Rihla Filler</strong>. Then come back to the official form.</p>
+      <a id="open-app" class="btn" target="_blank" rel="noopener">Open Rihla</a>
+    </section>
+
+    <section id="ready" hidden>
+      <div class="card">
+        <div id="name" class="name"></div>
+        <div id="passport" class="meta"></div>
+        <div id="route" class="meta"></div>
+        <div id="docs" class="meta docs"></div>
+      </div>
+      <div id="site" class="site"></div>
+      <button id="fill" class="btn primary" type="button">Fill this page</button>
+      <p class="hint">Or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> on each page of the form.</p>
+      <div id="result" class="result" hidden></div>
+      <p class="you">You sign in, answer the declarations, pay and press Submit yourself. Rihla never does.</p>
+      <footer>
+        <span id="expires"></span>
+        <button id="forget" class="link" type="button">Forget my details</button>
+      </footer>
+    </section>
+    <script src="popup.js"></script>
+  </body>
+</html>

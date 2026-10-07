@@ -104,6 +104,7 @@ const NAMES: Record<DocSlotId, (s: Sample) => { name: string; mime: string; byte
   ticket: (s) => ({ name: `${s.id}_flight_ticket.pdf`, mime: 'application/pdf', bytes: 188_000 }),
   hotel: (s) => ({ name: `${s.id}_hotel_booking.pdf`, mime: 'application/pdf', bytes: 143_000 }),
   insurance: (s) => ({ name: `${s.id}_health_insurance.pdf`, mime: 'application/pdf', bytes: 221_000 }),
+  bank: (s) => ({ name: `${s.id}_bank_statements.pdf`, mime: 'application/pdf', bytes: 356_000 }),
   sponsor_id: () => ({ name: 'sponsor_emirates_id.jpg', mime: 'image/jpeg', bytes: 310_000 }),
   tenancy: () => ({ name: 'sponsor_tenancy_ejari.pdf', mime: 'application/pdf', bytes: 530_000 }),
   salary: () => ({ name: 'sponsor_salary_certificate.pdf', mime: 'application/pdf', bytes: 97_000 }),

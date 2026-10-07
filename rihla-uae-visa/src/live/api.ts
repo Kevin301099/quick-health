@@ -1,5 +1,6 @@
 import type { Answers, Profile } from '@/domain/types';
 import type { PhotoReport } from '@/domain/photo';
+import type { AirlineId, OfficialSite, RouteId, RouteSpec } from '@/domain/routes';
 import { safeStorage } from '@/lib/utils';
 
 /*
@@ -107,9 +108,13 @@ export interface LiveConfig {
   maxFileBytes: number;
   declarations: Declaration[];
   retentionDays: number;
+  selfRetentionDays?: number;
+  /** Ways to a visa this server offers. Older servers omit it and file everything through the partner. */
+  routes?: RouteSpec[];
+  airlines?: (OfficialSite & { id: AirlineId })[];
 }
 
-export type Status = 'draft' | 'ready_to_pay' | 'paid' | 'queued' | 'submitted' | 'processing' | 'needs_info' | 'approved' | 'rejected' | 'cancelled';
+export type Status = 'draft' | 'ready_to_pay' | 'paid' | 'queued' | 'submitted' | 'processing' | 'needs_info' | 'approved' | 'rejected' | 'cancelled' | 'self_submitted';
 
 export interface LiveDoc {
   id: string;
@@ -146,6 +151,11 @@ export interface LiveEvent {
 export interface LiveApplication {
   id: string;
   status: Status;
+  route: RouteId;
+  airline: AirlineId | null;
+  selfRef: string | null;
+  site: OfficialSite | null;
+  slots: { required: string[]; optional: string[] };
   answers: Answers;
   profile: Partial<Profile>;
   photoReport: PhotoReport | null;

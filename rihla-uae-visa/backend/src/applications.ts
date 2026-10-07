@@ -13,6 +13,8 @@ import { similarity } from '@/domain/checks';
 import type { Answers, Profile } from '@/domain/types';
 import type { PhotoReport } from '@/domain/photo';
 import { todayIso } from '@/lib/dates';
+import { AIRLINES, ROUTE_SPECS, officialSiteFor, type AirlineId, type RouteId } from '@/domain/routes';
+import { SLOTS } from '@/domain/visas';
 
 /*
   One application, one traveller. The lifecycle:
@@ -25,14 +27,23 @@ import { todayIso } from '@/lib/dates';
 
   Everything a person can change happens in `draft` (or `needs_info`). After signing, the facts are frozen
   so what they paid for is exactly what gets filed.
+
+  Free routes (the 5-year visa, an airline visa) stop earlier: the traveller applies on the official site
+  themselves, with the form filled by the Rihla extension in their own browser, then tells us it is done.
+
+    draft ──ready, filled on the official site──▶ self_submitted
 */
 
-export type Status = 'draft' | 'ready_to_pay' | 'paid' | 'queued' | 'submitted' | 'processing' | 'needs_info' | 'approved' | 'rejected' | 'cancelled';
+export type Status = 'draft' | 'ready_to_pay' | 'paid' | 'queued' | 'submitted' | 'processing' | 'needs_info' | 'approved' | 'rejected' | 'cancelled' | 'self_submitted';
 
 export interface AppRow {
   id: string;
   user_id: string;
   status: Status;
+  route: RouteId;
+  airline: AirlineId | null;
+  /** The official site's reference, when the traveller applied themselves. */
+  self_ref: string | null;
   answers: Answers;
   profile: Partial<Profile> & { nationality?: string };
   photo_report: PhotoReport | null;
@@ -75,7 +86,12 @@ export interface DocRow {
 /** For now Rihla files the single-entry tourist visa only. */
 export const REQUIRED_SLOTS = ['passport', 'photo'] as const;
 export const OPTIONAL_SLOTS = ['ticket', 'hotel', 'insurance'] as const;
-export const ALL_SLOTS = [...REQUIRED_SLOTS, ...OPTIONAL_SLOTS] as const;
+export const ALL_SLOTS = [...REQUIRED_SLOTS, ...OPTIONAL_SLOTS, 'bank'] as const;
+export const ROUTE_IDS = ['five_year', 'airline', 'partner'] as const;
+export const AIRLINE_IDS = ['emirates', 'etihad', 'flydubai', 'airarabia'] as const;
+
+/** The documents an application needs, which depend on how the traveller is applying. */
+export const slotsFor = (a: Pick<AppRow, 'route'>) => ROUTE_SPECS[a.route ?? 'partner'];
 export const ACCEPTED_MIME = ['image/jpeg', 'image/png', 'application/pdf'] as const;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
@@ -222,14 +238,21 @@ function fullProfile(a: AppRow): Profile {
 }
 
 function computeChecks(d: Deps, a: AppRow) {
-  const res = runChecks({ answers: a.answers, profile: fullProfile(a), photo: a.photo_report, hasTicket: false, today: todayIso(d.now()) });
+  const res = runChecks({
+    answers: a.answers,
+    profile: fullProfile(a),
+    photo: a.photo_report,
+    hasTicket: false,
+    today: todayIso(d.now()),
+    multiEntry: a.route === 'five_year' ? { maxStay: 90 } : undefined,
+  });
   return { ...res, ranAt: d.now().toISOString() };
 }
 
 /** What is still missing before the person can sign. Empty means ready. */
 export async function readiness(d: Deps, a: AppRow) {
   const docs = latestPerSlot(await docsFor(d, a.id));
-  const missingDocs = REQUIRED_SLOTS.filter((s) => !docs.has(s));
+  const missingDocs = slotsFor(a).required.filter((s) => !docs.has(s));
   const missingFields = REQUIRED_PROFILE.filter((f) => !String(a.profile[f.key] ?? '').trim()).map((f) => f.label);
   const checks = a.checks ?? computeChecks(d, a);
   const blocking = (checks.issues as { risk: string; title: string }[]).filter((i) => i.risk === 'high').map((i) => i.title);
@@ -238,7 +261,12 @@ export async function readiness(d: Deps, a: AppRow) {
 
 /* ------------------------------------------------------------------ create and edit */
 
-export async function createApplication(d: Deps, user: { id: string; email: string }, input: unknown) {
+export async function createApplication(d: Deps, user: { id: string; email: string }, input: unknown, how: { route?: unknown; airline?: unknown } = {}) {
+  const enabled = d.config.ROUTES;
+  const route = (how.route ?? (enabled.includes('partner') ? 'partner' : undefined)) as RouteId | undefined;
+  if (!route || !enabled.includes(route)) throw new HttpError(422, 'route', 'Choose how you want to apply.');
+  const airline = route === 'airline' ? (how.airline as AirlineId) : null;
+  if (route === 'airline' && !AIRLINE_IDS.includes(airline as AirlineId)) throw new HttpError(422, 'airline', 'Choose the airline you are flying with.');
   const parsed = AnswersInput.safeParse(input);
   if (!parsed.success) throw new HttpError(422, 'invalid', parsed.error.issues[0]?.message ?? 'Check the trip details');
   const a = parsed.data;
@@ -249,12 +277,12 @@ export async function createApplication(d: Deps, user: { id: string; email: stri
   if (a.arrival < today) throw new HttpError(422, 'past', 'The arrival date is in the past.');
   const answers: Answers = { ...a, visa: 'tourist', relationship: 'friend' };
   const id = randomUUID();
-  const quote = quoteFor(d.config, a.days);
+  const quote = route === 'partner' ? quoteFor(d.config, a.days) : null;
   const rows = await d.db.query<AppRow>(
-    `INSERT INTO applications (id, user_id, status, answers, profile, quote) VALUES ($1, $2, 'draft', $3::jsonb, $4::jsonb, $5::jsonb) RETURNING *`,
-    [id, user.id, j(answers), j({ email: user.email }), j(quote)],
+    `INSERT INTO applications (id, user_id, status, answers, profile, quote, route, airline) VALUES ($1, $2, 'draft', $3::jsonb, $4::jsonb, $5::jsonb, $6, $7) RETURNING *`,
+    [id, user.id, j(answers), j({ email: user.email }), j(quote), route, airline],
   );
-  await logEvent(d, id, 'you', 'created', { days: a.days, arrival: a.arrival });
+  await logEvent(d, id, 'you', 'created', { route, airline, days: a.days, arrival: a.arrival });
   return rows[0];
 }
 
@@ -265,7 +293,7 @@ export async function updateApplication(d: Deps, a: AppRow, input: { answers?: u
     const parsed = AnswersInput.safeParse(input.answers);
     if (!parsed.success) throw new HttpError(422, 'invalid', parsed.error.issues[0]?.message ?? 'Check the trip details');
     fields.answers = { ...a.answers, ...parsed.data, visa: 'tourist' };
-    fields.quote = quoteFor(d.config, parsed.data.days);
+    if (a.route === 'partner') fields.quote = quoteFor(d.config, parsed.data.days);
   }
   if (input.profile !== undefined) {
     const parsed = ProfileInput.safeParse(input.profile);
@@ -400,7 +428,12 @@ export function publicDoc(doc: DocRow) {
 
 /* ------------------------------------------------------------------ review, sign, pay */
 
+const assertPartner = (a: AppRow) => {
+  if (a.route !== 'partner') throw new HttpError(409, 'self_route', 'You apply for this visa yourself on the official site, so there is nothing to sign or pay here.');
+};
+
 export async function signApplication(d: Deps, a: AppRow, input: { declarations?: Record<string, boolean>; signatureName?: string }) {
+  assertPartner(a);
   assertEditable(a);
   const fresh = await setFields(d, a.id, { checks: computeChecks(d, a) });
   const r = await readiness(d, fresh);
@@ -424,6 +457,7 @@ export async function signApplication(d: Deps, a: AppRow, input: { declarations?
 }
 
 export async function startCheckout(d: Deps, a: AppRow, email: string) {
+  assertPartner(a);
   if (a.status !== 'ready_to_pay') throw new HttpError(409, 'not_ready', a.status === 'draft' ? 'Review and sign the application first.' : 'This application is already paid.');
   const quote = a.quote ?? quoteFor(d.config, a.answers.days);
   const base = `${d.config.APP_URL}/#app-${a.id}`;
@@ -561,6 +595,76 @@ export async function respond(d: Deps, a: AppRow, message: string) {
   return updated;
 }
 
+/* ------------------------------------------------------------------ applying yourself (free routes) */
+
+const iso3Of = (iso2: string) => Object.entries(ISO3_TO_ISO2).find(([k, v]) => v === iso2 && k.length === 3)?.[0] ?? iso2;
+
+/** Where the traveller applies, for a free route. */
+export function siteFor(a: Pick<AppRow, 'route' | 'airline' | 'answers'>) {
+  if (a.route === 'airline' && a.airline) return AIRLINES[a.airline];
+  if (a.route === 'five_year') return officialSiteFor(a.answers.emirate);
+  return null;
+}
+
+/**
+ * Everything the Rihla extension needs to fill the official form: the traveller's details and short-lived links to
+ * their documents. The web page downloads the files and hands the lot to the extension in the same browser, so
+ * the official site's login, payment and submit button stay entirely with the traveller.
+ */
+export async function packFor(d: Deps, a: AppRow) {
+  if (a.route === 'partner') throw new HttpError(409, 'partner_route', 'This application is filed for you by our partner.');
+  if (a.purged_at) throw new HttpError(409, 'purged', 'The documents for this application have been deleted.');
+  if (editable(a)) {
+    const r = await readiness(d, a);
+    if (!r.ready) throw new HttpError(422, 'not_ready', 'Finish your documents and details first.');
+  }
+  const p = fullProfile(a);
+  const docs = [...latestPerSlot(await docsFor(d, a.id)).values()];
+  const nationality = NATIONALITIES.find((n) => n.code === a.answers.nationality);
+  await logEvent(d, a.id, 'you', 'handed_to_filler', { documents: docs.length });
+  return {
+    v: 1 as const,
+    applicationId: a.id,
+    route: a.route,
+    airline: a.airline,
+    site: siteFor(a),
+    preparedAt: d.now().toISOString(),
+    traveller: {
+      given: p.given,
+      surname: p.surname,
+      sex: p.sex,
+      dob: p.dob,
+      birthplace: p.birthplace,
+      nationality: { iso2: a.answers.nationality, iso3: iso3Of(a.answers.nationality), name: nationality?.name ?? '' },
+      passportNo: p.passportNo,
+      passportType: 'Normal',
+      passportIssued: p.passportIssued,
+      passportExpires: p.passportExpires,
+      email: p.email,
+      phone: p.phone,
+      profession: p.profession,
+      address: p.address,
+    },
+    trip: { arrival: a.answers.arrival, departure: a.answers.departure, emirate: a.answers.emirate },
+    documents: await Promise.all(
+      docs.map(async (doc) => {
+        const ext = doc.mime === 'application/pdf' ? 'pdf' : doc.mime === 'image/png' ? 'png' : 'jpg';
+        const name = `${doc.slot}-${(p.surname || 'traveller').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.${ext}`;
+        return { slot: doc.slot, label: SLOTS[doc.slot as keyof typeof SLOTS]?.label ?? doc.slot, mime: doc.mime, name, url: await d.storage.downloadUrl(doc.storage_key, 300) };
+      }),
+    ),
+  };
+}
+
+/** The traveller tells us they submitted on the official site. Their documents are deleted soon after. */
+export async function selfSubmitted(d: Deps, a: AppRow, reference: string) {
+  if (a.route === 'partner') throw new HttpError(409, 'partner_route', 'This application is filed for you by our partner.');
+  if (a.status !== 'draft') throw new HttpError(409, 'not_draft', 'This application is already marked as submitted.');
+  const updated = await setFields(d, a.id, { status: 'self_submitted', self_ref: reference.trim().slice(0, 60) || null, submitted_at: d.now().toISOString() });
+  await logEvent(d, a.id, 'you', 'self_submitted', { reference: reference.trim().slice(0, 60) });
+  return updated;
+}
+
 /* ------------------------------------------------------------------ public views */
 
 export async function publicApp(d: Deps, a: AppRow, opts: { withFiles?: boolean } = {}) {
@@ -572,9 +676,15 @@ export async function publicApp(d: Deps, a: AppRow, opts: { withFiles?: boolean 
     ? await Promise.all(latest.map(async (doc) => ({ ...publicDoc(doc), url: await d.storage.downloadUrl(doc.storage_key, 300) })))
     : latest.map(publicDoc);
   const lastPassport = latest.find((x) => x.slot === 'passport');
+  const spec = slotsFor(a);
   return {
     id: a.id,
     status: a.status,
+    route: a.route,
+    airline: a.airline,
+    selfRef: a.self_ref,
+    site: siteFor(a),
+    slots: { required: spec.required, optional: spec.optional },
     answers: a.answers,
     profile: a.profile,
     photoReport: a.photo_report,

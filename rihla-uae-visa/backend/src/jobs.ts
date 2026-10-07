@@ -39,15 +39,15 @@ export async function tick(d: Deps) {
     }
   }
 
-  // 3. Delete documents we no longer need: decided applications after the retention window,
-  //    and drafts nobody finished within the same window.
-  const days = d.config.RETENTION_DAYS;
+  // 3. Delete documents we no longer need: decided applications after the retention window, drafts nobody
+  //    finished within the same window, and free applications soon after the traveller submitted them.
   const old = await d.db.query<AppRow>(
     `SELECT * FROM applications WHERE purged_at IS NULL AND (
         (decided_at IS NOT NULL AND decided_at < now() - ($1 || ' days')::interval)
      OR (status IN ('draft', 'ready_to_pay') AND updated_at < now() - ($1 || ' days')::interval)
+     OR (status = 'self_submitted' AND updated_at < now() - ($2 || ' days')::interval)
      ) LIMIT 50`,
-    [String(days)],
+    [String(d.config.RETENTION_DAYS), String(d.config.SELF_RETENTION_DAYS)],
   );
   for (const a of old) {
     const docs = await d.db.query<{ id: string; storage_key: string }>('SELECT id, storage_key FROM documents WHERE application_id = $1 AND deleted_at IS NULL', [a.id]);

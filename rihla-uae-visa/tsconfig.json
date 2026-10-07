@@ -32,6 +32,7 @@
   "exclude": [
     "node_modules",
     "backend",
+    "extension",
     "out",
     ".next",
     "artifact"

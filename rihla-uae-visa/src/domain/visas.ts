@@ -24,6 +24,7 @@ export const SLOTS: Record<DocSlotId, SlotSpec> = {
   ticket: { id: 'ticket', label: 'Return or onward ticket', hint: 'A confirmed booking with your name and both dates.', accept: 'any' },
   hotel: { id: 'hotel', label: 'Hotel booking', hint: 'Where you will stay, with check-in and check-out dates.', accept: 'any' },
   insurance: { id: 'insurance', label: 'Travel health insurance', hint: 'A certificate that covers the UAE for your whole stay.', accept: 'any' },
+  bank: { id: 'bank', label: 'Bank statements', hint: 'The last six months, showing at least US$4,000 (AED 14,690). One PDF works best.', accept: 'any' },
   sponsor_id: { id: 'sponsor_id', label: "Sponsor's Emirates ID", hint: 'Front and back, still valid.', accept: 'any', sponsor: true },
   tenancy: { id: 'tenancy', label: "Sponsor's tenancy contract", hint: 'The Ejari tenancy contract for the home you will stay in.', accept: 'any', sponsor: true },
   salary: { id: 'salary', label: "Sponsor's salary certificate", hint: 'Issued by the employer in the last 3 months.', accept: 'any', sponsor: true },

@@ -10,6 +10,7 @@ const SIZE: Record<DocSlotId, { w: number; h: number }> = {
   ticket: { w: 440, h: 200 },
   hotel: { w: 360, h: 300 },
   insurance: { w: 360, h: 300 },
+  bank: { w: 360, h: 300 },
   sponsor_id: { w: 440, h: 278 },
   tenancy: { w: 360, h: 300 },
   salary: { w: 360, h: 300 },

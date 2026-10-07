@@ -1,6 +1,49 @@
 # Taking Rihla live
 
-This is the checklist for filing real UAE tourist visas for real travellers. The code is ready to run in production; most of what remains is business setup that only you can do.
+This is the checklist for taking Rihla to real travellers. The code is ready to run in production; most of what remains is business setup that only you can do.
+
+## 0. Launch free first: the traveller applies, Rihla prepares and fills
+
+You can go live without a licence, a partner or a payment account. Rihla offers two free ways to a visa:
+
+- the **5-year multiple-entry tourist visa**, which travellers sponsor themselves on GDRFA (Dubai) or ICP;
+- the **visa an airline offers its passengers** (Emirates, Etihad, flydubai, Air Arabia).
+
+Rihla reads and checks everything, then **Rihla Filler**, a browser extension, fills in the official form in the traveller's own browser. The traveller signs in, answers the declarations, pays and presses Submit.
+
+1. **API:** set `ROUTES=five_year,airline`. With the partner route off, the API no longer requires Stripe or a filing provider.
+2. **Extension:** build it for your domain and publish it on the Chrome Web Store. It also works in Edge and Brave. Full steps and the store notes are in [`extension/README.md`](../extension/README.md).
+   ```bash
+   cd rihla-uae-visa/extension
+   npm ci && npm test
+   RIHLA_APP_ORIGINS=https://your-domain npm run build      # dist/ is the extension; zip it for the store
+   ```
+3. **Web app:** build with `NEXT_PUBLIC_FILLER_URL=<the store listing>`, so travellers get a one-click install link.
+4. **Storage CORS:** the bucket must allow `GET` (as well as `PUT`) from the web app's origin. The page downloads the traveller's documents to hand them to the extension.
+5. **Before launch, apply for real yourself.** Use your own passport and go page by page on the real GDRFA or ICP form, and on an airline's form. Note any field the filler leaves for you.
+   - The filler was built and tested against replicas of those kinds of forms:
+     - a government e-service with English and Arabic labels;
+     - a framework-driven airline form with a split date and a card section;
+     - an Arabic-only page.
+   - It was not tested on the live sites, which need a login and were not reachable from the build environment.
+   - Its vocabulary is in `extension/src/match.ts`.
+
+What the filler never touches, by design:
+
+- sign-in, passwords and one-time codes;
+- captchas and card fields;
+- declarations and tick-boxes;
+- any button.
+
+It marks every field it filled: green when it is sure, amber when the traveller should look. It keeps the details on the device for 24 hours at most.
+
+The traveller is the applicant on every free route. Keep it that way:
+
+- Do not present Rihla as the issuer.
+- Do not charge for the visa itself.
+- Check each site's terms on autofill tools with a UAE lawyer.
+
+When you sign a licensed partner, add `partner` back to `ROUTES` for travellers who want a 30- or 60-day visa filed for them.
 
 ## 1. Who files the visa (the one hard requirement)
 
@@ -25,7 +68,7 @@ Here is what does work without your own licence:
 |---|---|---|
 | **Licensed partner** (built, recommended) | Everything up to and including payment: documents, passport reading, checks, signature, payment, status updates. | A licensed tourism company files. You pay their rate per visa (set `GOV_FEE_*` from it). |
 | **Partner portal automation** (possible next step) | With the partner's **written permission**, a browser agent fills *their* B2B portal from each paid application, instead of your ops team copying fields. Ask for this when you sign the agreement; an API (`partner_http`) is better still. | The partner stays the sponsor and the filer of record. |
-| **Traveller files it themselves** | A preparation service: checks, photo fixes, a filled-in summary, step-by-step guidance. Charge for the help, never for the visa itself. | The traveller applies through an official route open to individuals, such as an airline's visa service when they fly Emirates, Etihad or flydubai. Higher-income travellers can use the self-sponsored 5-year multiple-entry tourist visa. |
+| **Traveller files it themselves** (built, see section 0) | Checks, photo fixes, and Rihla Filler filling the official form in the traveller's own browser. Free. | The traveller applies through an official route open to individuals, such as an airline's visa service when they fly Emirates, Etihad or flydubai. Higher-income travellers can use the self-sponsored 5-year multiple-entry tourist visa. |
 | **Your own licence** (later) | Hold a Dubai tourism licence and immigration establishment card, and file directly. The `manual` mode then becomes your own team on the official portal. | Nothing; you are the sponsor. |
 
 The backend supports the partner path in three ways, set with `FILING_PROVIDER`:
@@ -104,7 +147,7 @@ These are estimates for one traveller, start to finish, before the partner's fee
 
 | Item | Per application | Notes |
 |---|---|---|
-| **Card payment** | **AED 11.70–15.40** | Stripe UAE charges 2.9% + AED 1 on domestic cards, plus 1% for international ones, on AED 368.55. This is about 99% of your running cost. |
+| **Card payment** (partner route only) | **AED 11.70–15.40** | Stripe UAE charges 2.9% + AED 1 on domestic cards, plus 1% for international ones, on AED 368.55. On the paid route this is about 99% of your running cost. The free routes have no card fees: the traveller pays the official site. |
 | Passport reading, Claude Opus 5.5 | about $0.022 | About 2,500 input and 600 output tokens at low effort, read once per file. |
 | Passport reading with the optional cheap first pass | about $0.001–0.023 | See "Model choice" below. |
 | API compute (Lambda) | about $0.0001 | About 80 requests including status polls, plus one passport reading (about 10 s) at 512 MB. It stays inside the free tier up to roughly 12,000 applications a month. |

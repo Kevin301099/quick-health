@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { LogOut, Moon, Sun } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Check, Copy, LogOut, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import { Pill, Wordmark } from '@/components/ui';
@@ -64,9 +64,11 @@ export function ErrorNote({ children }: { children: ReactNode }) {
   );
 }
 
-/** The five stages of a live application, drawn as the same dashed flight path as the demo. */
-export function Stages({ current }: { current: number }) {
-  const names = ['Trip', 'Documents', 'Sign', 'Pay', 'Visa'];
+export const PARTNER_STAGES = ['Trip', 'Documents', 'Sign', 'Pay', 'Visa'];
+export const SELF_STAGES = ['Trip', 'Documents', 'Fill the form', 'Submitted'];
+
+/** The stages of a live application, drawn as the same dashed flight path as the demo. */
+export function Stages({ current, names = PARTNER_STAGES }: { current: number; names?: string[] }) {
   return (
     <ol className="flex items-center gap-0 overflow-x-auto" aria-label="Progress">
       {names.map((n, i) => (
@@ -103,9 +105,37 @@ const STATUS_LABEL: Record<LiveApplication['status'], [string, 'neutral' | 'bran
   approved: ['Approved', 'ok'],
   rejected: ['Not approved', 'attn'],
   cancelled: ['Cancelled', 'neutral'],
+  self_submitted: ['Submitted by you', 'ok'],
 };
 
 export function StatusPill({ status }: { status: LiveApplication['status'] }) {
   const [label, tone] = STATUS_LABEL[status];
   return <Pill tone={tone}>{label}</Pill>;
+}
+
+/** A label and value with a copy button, for typing details into another website by hand. */
+export function CopyRow({ k, v }: { k: string; v: string }) {
+  const [done, setDone] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(v);
+      setDone(true);
+      window.setTimeout(() => setDone(false), 1200);
+    } catch {
+      /* clipboard refused: the value is selectable */
+    }
+  };
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-line py-1.5">
+      <dt className="text-[12.5px] text-muted">{k}</dt>
+      <dd className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate font-mono text-[13px] text-fg">{v || '—'}</span>
+        {v && (
+          <button type="button" onClick={copy} className="rounded p-1 text-faint hover:text-fg" aria-label={`Copy ${k}`}>
+            {done ? <Check size={13} /> : <Copy size={13} />}
+          </button>
+        )}
+      </dd>
+    </div>
+  );
 }

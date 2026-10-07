@@ -1,4 +1,4 @@
-import { ArrowRight, Ban, CreditCard, Eye, Mail, Moon, PenLine, Plus, ScrollText, ShieldCheck, Sun } from 'lucide-react';
+import { ArrowRight, Ban, Check, CreditCard, Eye, KeyRound, Mail, Moon, PenLine, Plus, ScrollText, ShieldCheck, Sun } from 'lucide-react';
 import { RULES_REVIEWED, SOURCES } from '@/domain/visas';
 import { useTheme } from '@/lib/theme';
 import { Wordmark } from '../ui';
@@ -9,33 +9,72 @@ import { LiveHeroPreview } from './LiveHeroPreview';
 import { Pricing, type LiveQuote } from './Pricing';
 import { useEffect, useState } from 'react';
 
-/** Prices come from the API in the live product, so the page never disagrees with checkout. */
-function useLiveQuotes(live: boolean) {
-  const [q, setQ] = useState<Record<'30' | '60', LiveQuote> | null>(null);
+/** Prices and the ways to apply come from the API in the live product, so the page never disagrees with it. */
+function useLiveOffer(live: boolean) {
+  const [offer, setOffer] = useState<{ quotes: Record<'30' | '60', LiveQuote>; partner: boolean } | null>(null);
   useEffect(() => {
     if (!live) return;
-    import('@/live/api').then(({ api }) => api<{ quotes: Record<'30' | '60', LiveQuote> }>('/v1/config')).then((c) => setQ(c.quotes), () => undefined);
+    import('@/live/api')
+      .then(({ api }) => api<{ quotes: Record<'30' | '60', LiveQuote>; routes?: { id: string }[] }>('/v1/config'))
+      .then(
+        (c) => setOffer({ quotes: c.quotes, partner: !c.routes || c.routes.some((r) => r.id === 'partner') }),
+        () => undefined,
+      );
   }, [live]);
-  return q;
+  return offer;
+}
+
+/** The free way: Rihla prepares and fills, the traveller applies on the official site. */
+function FreePlan({ onApply }: { onApply: () => void }) {
+  return (
+    <div className="ticket max-w-[620px]">
+      <div className="ticket-body flex flex-col" style={{ ['--y' as string]: 'calc(100% - 132px)' }}>
+        <div className="px-6 pb-6 pt-6">
+          <div className="eyebrow">You apply yourself</div>
+          <h3 className="mt-1 font-display text-[28px] font-bold leading-[1.05] tracking-[-0.03em]">Prepared and filled in, free</h3>
+          <p className="mt-2 max-w-[46ch] text-[14.5px] text-muted pretty">For the 5-year multiple-entry tourist visa on GDRFA or ICP, and the visa your airline offers if you fly Emirates, Etihad, flydubai or Air Arabia.</p>
+          <ul className="mt-5 grid gap-2.5">
+            {['Your passport read and proven by its check digits', 'Every document checked before you apply', 'The official form filled in, in your own browser', 'Your sign-in, payment and Submit stay with you'].map((t) => (
+              <li key={t} className="flex gap-2.5 text-[14.5px] text-fg">
+                <Check size={17} className="mt-[3px] shrink-0 text-brand" aria-hidden />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="perf mx-6" />
+        <div className="flex flex-wrap items-end justify-between gap-4 px-6 pb-6 pt-5">
+          <div>
+            <div className="eyebrow">To Rihla</div>
+            <div className="font-display text-[34px] font-bold leading-none tracking-[-0.03em] tnum">AED 0</div>
+            <div className="mt-1.5 text-[12.5px] text-faint">The visa fee is paid on the official site</div>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={onApply}>
+            Start free <ArrowRight size={16} aria-hidden />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
 const LIVE_YOUR_TURN = [
   {
-    icon: ScrollText,
-    title: 'The declarations',
-    body: 'Prior refusals, deportations, criminal record. These are legal statements, so you answer each one yourself. We never tick a box for you.',
+    icon: KeyRound,
+    title: 'Signing in',
+    body: 'You sign in to the official site with your own account and type any code it sends you. Rihla never sees your password.',
   },
   {
-    icon: PenLine,
-    title: 'Your signature',
-    body: 'You check every detail we read from your passport, then type your name to sign. After that the application is locked, so what you pay for is exactly what is filed.',
+    icon: ScrollText,
+    title: 'The declarations',
+    body: 'Prior refusals, deportations, criminal record. These are legal statements, so you answer each one yourself. Rihla never ticks a box for you.',
   },
   {
     icon: CreditCard,
-    title: 'The payment',
-    body: 'The last thing you do. You pay on a secure payment page, and only then does our licensed partner file the visa.',
+    title: 'Paying and pressing Submit',
+    body: 'You pay the visa fee on the official site with your own card, then press Submit. The application is yours, made by you.',
   },
 ];
 
@@ -85,28 +124,28 @@ const NEVER = [
 ];
 
 const LIVE_STEPS = [
-  { who: 'You do this', title: 'Upload your passport and photo', body: 'A ticket and hotel booking help but are optional. Nothing is filed and nothing is paid yet.' },
+  { who: 'You do this', title: 'Upload your documents', body: 'Your passport and photo to start. The 5-year visa also asks for bank statements, insurance and a return ticket.' },
   { who: 'Rihla does this', title: 'We read and check everything', body: 'We read your passport, confirm it against its check digits, and flag anything that would get the visa refused.' },
-  { who: 'You, for a moment', title: 'You confirm, sign and pay', body: 'You answer the declarations yourself, type your name to sign, and pay on a secure page. That is the last thing you do.' },
-  { who: 'Our licensed partner', title: 'The visa arrives by email', body: 'Our licensed UAE partner files it. We follow it to the decision and send you the visa as a PDF.' },
+  { who: 'Rihla Filler does this', title: 'The official form fills itself', body: 'Sign in to GDRFA, ICP or your airline. One click and every field is typed and every document attached, in your own browser.' },
+  { who: 'You, at the end', title: 'You pay and press Submit', body: 'The declarations, the visa fee and the Submit button are yours. The visa comes to you from the authorities.' },
 ];
 
 const LIVE_NEVER = [
-  ['Sees your card', 'You pay on a secure payment page. The card number never reaches Rihla.'],
-  ['Answers for you', 'Declarations are yours. We show each question and record your answer.'],
-  ['Files before you sign', 'Nothing is filed until you have seen every detail and signed.'],
-  ['Keeps your documents', 'Documents are deleted 30 days after a decision, and unfinished applications after 30 days.'],
+  ['Sees your password or card', 'You sign in and pay on the official site. Neither ever reaches Rihla.'],
+  ['Presses Submit for you', 'Rihla Filler types and attaches. Submitting is always your own click.'],
+  ['Answers for you', 'Declarations and tick-boxes are yours. The filler never touches them.'],
+  ['Keeps your documents', 'They are deleted a week after you submit, and unfinished applications after 30 days.'],
   ['Guesses', 'If something does not add up, like a passport number that fails its check digit, we ask you.'],
 ];
 
 const LIVE_FAQ = [
-  ['Is this a government service?', 'No. Rihla is a private service. A UAE tourist visa has to be sponsored by a licensed tourism company, so our licensed partner files your application with the UAE authorities.'],
-  ['What happens to my documents?', 'They are stored encrypted, used only for your application, and deleted 30 days after a decision. Unfinished applications are deleted after 30 days too.'],
-  ['Is my card safe?', 'You pay on a secure payment page run by our payment provider. Rihla never sees or stores your card number.'],
-  ['How long does it take?', 'Uploading and checking takes a few minutes. The authorities list about 48 hours for a decision, which is not guaranteed.'],
-  ['What if the application is refused?', 'Nobody can promise an approval. We catch the avoidable mistakes before filing, and if the authorities refuse, we show you the reason and what you can do next.'],
-  ['What if you cannot file it?', 'If we cannot file your application after you pay, for example because the partner needs a document you cannot provide, you get a full refund.'],
-  ['Which passports can use Rihla?', 'Rihla files the single-entry tourist visa for 30 or 60 days for passports that need a visa in advance. The checker at the top tells you in a second whether yours does.'],
+  ['Is this a government service?', 'No. Rihla is a private service. You apply on the official website yourself (GDRFA, ICP or your airline), and the authorities decide. Rihla prepares your documents and fills in the form for you.'],
+  ['Is it really free?', 'Yes. Reading your passport, checking your documents and filling in the official form cost nothing. You pay only the visa fee, on the official site.'],
+  ['Which visa can I get this way?', 'The 5-year multiple-entry tourist visa, which you sponsor yourself (you need about US$4,000 in the bank over six months, insurance and a return ticket). Or the 30- or 60-day visa your airline offers if you fly Emirates, Etihad, flydubai or Air Arabia.'],
+  ['What is Rihla Filler?', 'A small browser extension for Chrome, Edge and Brave on a computer. When you click it on the official form, it types your details and attaches your documents. It cannot submit, pay, or read any other site.'],
+  ['What happens to my documents?', 'They are stored encrypted, used only for your application, and deleted a week after you submit. The filler keeps your details in your browser for 24 hours at most.'],
+  ['How long does it take?', 'Uploading and checking takes a few minutes, and filling the form a few clicks. The decision time is set by the authorities.'],
+  ['What if the application is refused?', 'Nobody can promise an approval. We catch the avoidable mistakes before you apply. The decision and its reasons come from the authorities.'],
 ];
 
 const FAQ = [
@@ -133,7 +172,7 @@ function H2({ children, className = '' }: { children: React.ReactNode; className
 
 export function Landing({ onApply, live = false }: { onApply: () => void; live?: boolean }) {
   const { theme, toggle } = useTheme();
-  const liveQuotes = useLiveQuotes(live);
+  const offer = useLiveOffer(live);
 
   return (
     <div className="min-h-full bg-bg text-fg">
@@ -172,11 +211,11 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
               <h1 className="font-display text-[44px] font-extrabold leading-[0.96] md:text-[60px] lg:text-[72px] tracking-[-0.045em] balance">
                 Your UAE visa,
                 <br />
-                <span className="text-brand">filed for you.</span>
+                <span className="text-brand">{live ? 'filled in for\u00a0you.' : 'filed for you.'}</span>
               </h1>
               <p className="mt-6 max-w-[52ch] text-[18px] leading-relaxed text-muted pretty">
                 {live
-                  ? 'Upload your passport and photo. We read them, check everything that gets visas refused, and file through our licensed UAE partner. You answer, sign and pay, and the visa arrives by email.'
+                  ? 'Upload your documents. We read them, check everything that gets visas refused, then fill in the official form for you, in your own browser. You sign in, pay the visa fee and press Submit. Rihla is free.'
                   : 'Upload your documents once. An agent opens the portal, fills in every field and checks its own work. It stops only when something is yours to do: a code, a declaration, a signature, the payment. You do it on screen, and it carries on.'}
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -190,9 +229,9 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
               <dl className="mt-10 grid max-w-[520px] grid-cols-3 gap-4 border-t border-line pt-5">
                 {(live
                   ? [
-                      ['2', 'documents required'],
-                      ['3', 'steps that need you'],
-                      ['0', 'card numbers we see'],
+                      ['0', 'AED to Rihla'],
+                      ['1', 'click per form page'],
+                      ['0', 'passwords or cards we see'],
                     ]
                   : [
                       ['5', 'documents, uploaded once'],
@@ -227,7 +266,7 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
         {/* how it works */}
         <Section id="how" className="py-24">
           <div className="max-w-[640px]">
-            <H2>Upload once. Then handle only what only you can.</H2>
+            <H2>{live ? 'Upload once. Click once on each page. Submit.' : 'Upload once. Then handle only what only you can.'}</H2>
           </div>
           <ol className="relative mt-12 grid gap-10 lg:grid-cols-4 lg:gap-6">
             <span className="absolute bottom-5 left-[19px] top-5 border-l-2 border-dashed lg:hidden" style={{ borderColor: 'var(--line-strong)' }} aria-hidden />
@@ -252,7 +291,7 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
               <H2>{live ? 'Three things only you can do.' : 'Four things only you can do.'}</H2>
               <p className="mt-4 max-w-[44ch] text-[16.5px] leading-relaxed text-muted pretty">
                 {live
-                  ? 'We do everything else: reading, checking, filing and following up. If the authorities need something more, we email you and show exactly what on your application page.'
+                  ? 'Rihla does everything else: reading, checking and filling in. On the official form, every field we typed is marked green, so you can see what to check before you submit.'
                   : 'The agent does everything else. When it reaches one of these it pins a single card to the screen, tells you what it needs, and waits. You never have to guess what happens next, or watch a spinner and wonder.'}
               </p>
             </div>
@@ -295,10 +334,10 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
               />
             </div>
             <div>
-              <H2>{live ? 'Checked before you pay.' : 'It checks its own work first.'}</H2>
+              <H2>{live ? 'Checked before you apply.' : 'It checks its own work first.'}</H2>
               <p className="mt-4 max-w-[48ch] text-[16.5px] leading-relaxed text-muted pretty">
                 {live
-                  ? 'Most refusals are small, avoidable mistakes. We look for them while you upload, and show you each one with a way to fix it, before you pay anything.'
+                  ? 'Most refusals are small, avoidable mistakes. We look for them while you upload, and show you each one with a way to fix it, before you apply.'
                   : 'Most refusals are small, avoidable mistakes. So the agent looks for them before anything is filed, and again after.'}
               </p>
               <ul className="mt-6 grid gap-3 text-[15px] text-fg">
@@ -307,7 +346,7 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
                       'Passport number, birth date and expiry proven by the check digits printed in the code lines.',
                       'Passport valid for six months after you arrive.',
                       'Photo measured on its pixels: shape, background and size. A dark background can be fixed in one click.',
-                      'Arrival within the 60-day window, and a stay that fits the visa you chose.',
+                      'A stay that fits the visa you chose: 90 days a visit on the 5-year visa, 30 or 60 days on a single-entry one.',
                     ]
                   : [
                       'Passport valid long enough, names the same on every document.',
@@ -329,11 +368,28 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
         {/* pricing */}
         <Section id="pricing" className="border-t border-line bg-surface py-24">
           <div className="max-w-[640px]">
-            <H2>One price, shown before you start.</H2>
-            <p className="mt-4 text-[16.5px] leading-relaxed text-muted pretty">The government fee, our flat service fee and VAT, added up. No surprises on the last page.</p>
+            <H2>{live ? 'Free. You pay only the visa fee.' : 'One price, shown before you start.'}</H2>
+            <p className="mt-4 text-[16.5px] leading-relaxed text-muted pretty">
+              {live ? 'Preparing, checking and filling in cost nothing. The visa fee goes to the official site, paid with your own card.' : 'The government fee, our flat service fee and VAT, added up. No surprises on the last page.'}
+            </p>
           </div>
           <div className="mt-10">
-            {!live ? <Pricing onApply={onApply} /> : liveQuotes ? <Pricing onApply={onApply} live={liveQuotes} /> : <div className="skeleton h-72 max-w-[620px]" aria-label="Loading prices" />}
+            {!live ? (
+              <Pricing onApply={onApply} />
+            ) : (
+              <>
+                <FreePlan onApply={onApply} />
+                {offer?.partner && (
+                  <div className="mt-16">
+                    <h3 className="font-display text-[26px] font-bold tracking-[-0.025em]">Rather we file it for you?</h3>
+                    <p className="mt-2 max-w-[60ch] text-[15px] text-muted pretty">Not flying with one of those airlines, or no time to apply yourself? Our licensed UAE partner can file a 30- or 60-day tourist visa for you.</p>
+                    <div className="mt-6">
+                      <Pricing onApply={onApply} live={offer.quotes} />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </Section>
 
@@ -361,7 +417,8 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
                 <h3 className="mt-3 font-display text-[24px] font-semibold leading-tight tracking-[-0.02em]">{live ? 'How your visa is filed' : 'Straight talk about this demo'}</h3>
                 {live ? (
                   <>
-                    <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">UAE law requires a tourist visa to be sponsored by a licensed tourism establishment. Rihla prepares and checks your application; our licensed partner files it with the UAE authorities, who make the decision.</p>
+                    <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">You apply on the official website yourself, and the UAE authorities decide. Rihla prepares and checks your documents and fills in the form in your own browser; it never signs in, pays or submits for you.</p>
+                    {offer?.partner && <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">A 30- or 60-day tourist visa without an airline must be sponsored by a licensed tourism establishment. If you choose that, our licensed partner files it.</p>}
                     <p className="mt-3 text-[14.5px] leading-relaxed text-[var(--on-band-muted)]">Rihla is a private company and is not part of any government. Official information is published by the authorities below.</p>
                   </>
                 ) : (
@@ -408,7 +465,7 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
             <div className="ticket-body flex flex-col items-start justify-between gap-6 px-8 py-10 md:flex-row md:items-center" style={{ ['--y' as string]: '50%' }}>
               <div className="min-w-0">
                 <h2 className="font-display text-[32px] font-bold leading-[1.04] tracking-[-0.035em] balance md:text-[40px] lg:text-[44px]">Ready when your documents are.</h2>
-                <p className="mt-3 max-w-[48ch] text-[16px] text-muted pretty">It takes a few minutes to upload. The agent does the rest, and tells you the moment it needs you.</p>
+                <p className="mt-3 max-w-[48ch] text-[16px] text-muted pretty">{live ? 'A few minutes to upload. Rihla checks everything and fills in the official form; you press Submit.' : 'It takes a few minutes to upload. The agent does the rest, and tells you the moment it needs you.'}</p>
               </div>
               <button type="button" className="btn btn-primary btn-lg shrink-0" onClick={onApply}>
                 Start your application <ArrowRight size={18} aria-hidden />
@@ -428,7 +485,7 @@ export function Landing({ onApply, live = false }: { onApply: () => void; live?:
               </span>
             </div>
             <p className="mt-3 max-w-[56ch] text-[13px] leading-relaxed text-faint">{live
-                ? 'Rihla means journey. Rihla is a private visa service and is not affiliated with any government. Visas are filed through a licensed UAE tourism partner.'
+                ? 'Rihla means journey. Rihla is a private service and is not affiliated with any government. You apply on official websites yourself; Rihla prepares your documents and fills in the forms.'
                 : `Rihla means journey. This is a demo and is not affiliated with any government. Entry rules and fees were compiled from public sources on ${RULES_REVIEWED} and must be verified before you rely on them.`}</p>
           </div>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => jump('top')}>

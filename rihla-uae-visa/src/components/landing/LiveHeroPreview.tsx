@@ -1,28 +1,28 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, m, useReducedMotion } from 'motion/react';
-import { Check, ScanLine } from 'lucide-react';
+import { Check, MousePointerClick, ScanLine } from 'lucide-react';
 import { Pill, Stamp } from '../ui';
 import { cn } from '@/lib/utils';
 
 /*
   The live product's hero: a passport photo page being read, then proven correct by the check digits printed
-  in its machine-readable zone, then signed, paid, filed and issued. It opens on the proof, the frame that says
-  most about what Rihla does, and loops from there.
+  in its machine-readable zone, then the official form filled in, then the traveller paying and submitting, then
+  the visa. It opens on the proof, the frame that says most about what Rihla does, and loops from there.
 */
 
 const MRZ = ['P<INDSHARMA<<ANANYA<RAVI<<<<<<<<<<<<<<<<<<<<', 'Z9100234<8IND9206148F2902289<<<<<<<<<<<<<<<8'] as const;
 /** Positions of the five check digits in line two: number, birth date, expiry, personal number, composite. */
 const CHECK_AT = new Set([9, 19, 27, 42, 43]);
 
-const STEPS = ['Read your passport', 'Confirmed by 5 check digits', 'Checked dates and photo', 'You sign', 'You pay', 'Filed by our licensed partner', 'Visa issued'];
+const STEPS = ['Read your passport', 'Confirmed by 5 check digits', 'Checked dates and photo', 'Official form filled in', 'You pay and press Submit', 'Visa issued'];
 
-type Dock = 'reading' | 'proof' | 'sign' | 'filed' | 'issued';
+type Dock = 'reading' | 'proof' | 'filled' | 'submit' | 'issued';
 const STAGES: { cur: number; dock: Dock }[] = [
   { cur: 0, dock: 'reading' },
   { cur: 2, dock: 'proof' },
-  { cur: 3, dock: 'sign' },
-  { cur: 5, dock: 'filed' },
-  { cur: 7, dock: 'issued' },
+  { cur: 3, dock: 'filled' },
+  { cur: 4, dock: 'submit' },
+  { cur: 6, dock: 'issued' },
 ];
 const DWELL_MS = 3400;
 
@@ -42,25 +42,42 @@ function DockCard({ dock }: { dock: Dock }) {
         <Stamp top="ENTRY PERMIT" bottom="UNITED ARAB EMIRATES" date="28 OCT" size={96} className="stamp-in shrink-0" />
         <div className="min-w-0">
           <div className="font-display text-[20px] font-bold leading-tight tracking-[-0.02em]">Your visa is ready</div>
-          <p className="mt-1 text-[13px] text-muted">Sent by email as a PDF, and on your application page.</p>
+          <p className="mt-1 text-[13px] text-muted">The authorities email it to you. Carry a copy when you fly.</p>
         </div>
       </div>
     );
-  if (dock === 'sign')
+  if (dock === 'submit')
     return (
       <div>
         <Pill tone="attn">Your turn</Pill>
-        <div className="mt-2 font-display text-[19px] font-semibold leading-tight tracking-[-0.02em]">Answer, then sign</div>
-        <p className="mt-1 text-[13px] leading-snug text-muted">Three declarations only you can make, then your name as it appears in your passport.</p>
-        <div className="mt-3 rounded-xl border border-line bg-surface px-3 py-2 font-display text-[16px] tracking-[-0.01em] text-fg">
-          Ananya Ravi Sharma<span className="caret" aria-hidden />
+        <div className="mt-2 font-display text-[19px] font-semibold leading-tight tracking-[-0.02em]">Pay, then press Submit</div>
+        <p className="mt-1 text-[13px] leading-snug text-muted">On the official site, with your own card. The declarations and the final click are yours.</p>
+        <div className="mt-3 inline-flex items-center gap-2 rounded-xl bg-attn px-3.5 py-2 text-[13.5px] font-semibold text-[var(--on-attn)]">
+          <MousePointerClick size={15} aria-hidden /> Submit application
         </div>
       </div>
     );
-  const copy: Record<'reading' | 'proof' | 'filed', [string, string]> = {
+  if (dock === 'filled')
+    return (
+      <div>
+        <div className="font-display text-[19px] font-semibold leading-tight tracking-[-0.02em]">The official form, filled in</div>
+        <p className="mt-1 text-[13px] leading-snug text-muted">One click on each page of GDRFA, ICP or your airline. Every field typed, every document attached.</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {[
+            ['Passport number', 'Z9100234'],
+            ['Date of birth', '14/06/1992'],
+          ].map(([k, v]) => (
+            <div key={k} className="min-w-0 rounded-lg border-2 px-2.5 py-1.5" style={{ borderColor: 'var(--brand)' }}>
+              <div className="text-[11px] text-muted">{k}</div>
+              <div className="truncate font-mono text-[12.5px] font-semibold text-fg">{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  const copy: Record<'reading' | 'proof', [string, string]> = {
     reading: ['Reading your passport', 'Every field on the photo page, and the two code lines at the bottom.'],
     proof: ['Every number checks out', 'Z9100234 · 14 Jun 1992 · 28 Feb 2029. Confirmed by the check digits, so nothing is mistyped.'],
-    filed: ['Paid. Filed with our partner', 'A licensed UAE tourism company files it. Usually decided within 48 hours.'],
   };
   const [title, text] = copy[dock];
   return (
@@ -144,7 +161,7 @@ export function LiveHeroPreview() {
           <div className="flex min-w-0 flex-col">
             <ol className="ledger px-4 py-2" aria-label="Progress">
               {STEPS.map((label, n) => {
-                const state = n < stage.cur ? 'done' : n === stage.cur ? (stage.dock === 'sign' ? 'you' : 'now') : 'later';
+                const state = n < stage.cur ? 'done' : n === stage.cur ? (stage.dock === 'submit' ? 'you' : 'now') : 'later';
                 return (
                   <li key={label} className="flex items-center gap-2.5 py-[6px] text-[13px]">
                     <span

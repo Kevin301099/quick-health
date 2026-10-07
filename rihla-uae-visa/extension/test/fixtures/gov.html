@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Entry Permit Application — Test replica of a government e-service</title>
+<style>
+  body { font: 14px Tahoma, Arial, sans-serif; background: #eef1f4; margin: 0; color: #1b2733; }
+  .bar { background: #6d1f2b; color: #fff; padding: 14px 24px; font-weight: bold; }
+  .wrap { max-width: 980px; margin: 20px auto; background: #fff; border: 1px solid #c9d1da; padding: 20px 24px; }
+  h2 { font-size: 16px; background: #f3f5f8; border-left: 4px solid #6d1f2b; padding: 8px 10px; margin: 22px 0 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 8px; vertical-align: middle; }
+  td.lbl { width: 34%; color: #3b4a59; }
+  td.lbl span.ar { display: block; color: #6b7a89; font-size: 12px; direction: rtl; text-align: left; }
+  input[type=text], select { width: 100%; padding: 6px; border: 1px solid #aab4bf; border-radius: 2px; font: inherit; box-sizing: border-box; }
+  .req { color: #c00; }
+  .btn { background: #6d1f2b; color: #fff; border: 0; padding: 9px 22px; font: inherit; cursor: pointer; }
+  .note { font-size: 12px; color: #6b7a89; }
+</style>
+</head>
+<body>
+<div class="bar">Smart Services · New 5 Years Tourism Entry Permit (test replica)</div>
+<div class="wrap">
+  <form id="aspnetForm" onsubmit="window.__submitted = true; return false;">
+    <h2>Account</h2>
+    <table>
+      <tr><td class="lbl">Username</td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtUserName" name="ctl00$ContentPlaceHolder1$txtUserName"></td></tr>
+      <tr><td class="lbl">Password</td><td><input type="password" id="ctl00_ContentPlaceHolder1_txtPassword"></td></tr>
+      <tr><td class="lbl">OTP sent to your email</td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtOTP" maxlength="6"></td></tr>
+    </table>
+
+    <h2>Applicant Information / بيانات مقدم الطلب</h2>
+    <table>
+      <tr><td class="lbl">First Name (English) <span class="req">*</span><span class="ar">الاسم الأول</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtFirstNameEn"></td></tr>
+      <tr><td class="lbl">Middle Name (English)<span class="ar">الاسم الأوسط</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtMiddleNameEn"></td></tr>
+      <tr><td class="lbl">Last Name (English) <span class="req">*</span><span class="ar">اسم العائلة</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtLastNameEn"></td></tr>
+      <tr><td class="lbl">First Name (Arabic)<span class="ar">الاسم الأول بالعربي</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtFirstNameAr" dir="rtl"></td></tr>
+      <tr><td class="lbl">Father Name<span class="ar">اسم الأب</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtFatherName"></td></tr>
+      <tr><td class="lbl">Gender <span class="req">*</span></td><td>
+        <label><input type="radio" name="ctl00$ContentPlaceHolder1$rblGender" value="1"> Male</label>
+        <label><input type="radio" name="ctl00$ContentPlaceHolder1$rblGender" value="2"> Female</label>
+      </td></tr>
+      <tr><td class="lbl">Date of Birth <span class="req">*</span><span class="ar">تاريخ الميلاد</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtDOB" placeholder="dd/mm/yyyy"></td></tr>
+      <tr><td class="lbl">Place of Birth<span class="ar">مكان الميلاد</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtBirthPlace"></td></tr>
+      <tr><td class="lbl">Country of Birth</td><td><select id="ctl00_ContentPlaceHolder1_ddlBirthCountry"><option value="">-- Select --</option><option value="IND">INDIA</option><option value="PAK">PAKISTAN</option></select></td></tr>
+      <tr><td class="lbl">Current Nationality <span class="req">*</span><span class="ar">الجنسية الحالية</span></td><td><select id="ctl00_ContentPlaceHolder1_ddlNationality"><option value="">-- Select --</option><option value="BGD">BANGLADESH</option><option value="IOT">BRITISH INDIAN OCEAN TERRITORY</option><option value="IND">INDIA</option><option value="IDN">INDONESIA</option><option value="PAK">PAKISTAN</option></select></td></tr>
+      <tr><td class="lbl">Previous Nationality</td><td><select id="ctl00_ContentPlaceHolder1_ddlPrevNationality"><option value="">-- Select --</option><option value="IND">INDIA</option></select></td></tr>
+      <tr><td class="lbl">Profession</td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtProfession"></td></tr>
+    </table>
+
+    <h2>Passport Information / بيانات جواز السفر</h2>
+    <table>
+      <tr><td class="lbl">Passport Type <span class="req">*</span></td><td><select id="ctl00_ContentPlaceHolder1_ddlPassportType"><option value="0">-- Select --</option><option value="1">Normal</option><option value="2">Diplomatic</option><option value="3">Special</option></select></td></tr>
+      <tr><td class="lbl">Passport Number <span class="req">*</span><span class="ar">رقم جواز السفر</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtPassportNo"></td></tr>
+      <tr><td class="lbl">Passport Issue Date <span class="req">*</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtPassportIssueDate" placeholder="dd/mm/yyyy"></td></tr>
+      <tr><td class="lbl">Passport Expiry Date <span class="req">*</span><span class="ar">تاريخ انتهاء الجواز</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtPassportExpiryDate" placeholder="dd/mm/yyyy"></td></tr>
+      <tr><td class="lbl">Passport Issuing Country</td><td><select id="ctl00_ContentPlaceHolder1_ddlIssueCountry"><option value="">-- Select --</option><option value="IND">INDIA</option><option value="PAK">PAKISTAN</option></select></td></tr>
+    </table>
+
+    <h2>Contact Details</h2>
+    <table>
+      <tr><td class="lbl">Email <span class="req">*</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtEmail"></td></tr>
+      <tr><td class="lbl">Confirm Email <span class="req">*</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtConfirmEmail"></td></tr>
+      <tr><td class="lbl">Mobile Country Code</td><td><select id="ctl00_ContentPlaceHolder1_ddlMobileCode"><option value="">--</option><option value="91">+91</option><option value="971">+971</option></select></td></tr>
+      <tr><td class="lbl">Mobile Number <span class="req">*</span></td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtMobile"></td></tr>
+      <tr><td class="lbl">Address Outside UAE</td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtAddress"></td></tr>
+    </table>
+
+    <h2>Attachments / المرفقات</h2>
+    <table>
+      <tr><td class="lbl">Passport Copy (first page)</td><td><input type="file" id="ctl00_ContentPlaceHolder1_fuPassport" accept=".jpg,.jpeg,.png,.pdf"></td></tr>
+      <tr><td class="lbl">Personal Photo (white background)</td><td><input type="file" id="ctl00_ContentPlaceHolder1_fuPhoto" accept=".jpg,.jpeg,.png"></td></tr>
+      <tr><td class="lbl">Bank Statement (last 6 months)</td><td><input type="file" id="ctl00_ContentPlaceHolder1_fuBank" accept=".pdf"></td></tr>
+      <tr><td class="lbl">Health Insurance</td><td><input type="file" id="ctl00_ContentPlaceHolder1_fuInsurance"></td></tr>
+      <tr><td class="lbl">Return Ticket</td><td><input type="file" id="ctl00_ContentPlaceHolder1_fuTicket"></td></tr>
+    </table>
+
+    <h2>Declaration</h2>
+    <p><label><input type="checkbox" id="ctl00_ContentPlaceHolder1_chkDeclare"> I declare that the information provided is true and correct.</label></p>
+    <table><tr><td class="lbl">Enter the characters shown (captcha)</td><td><input type="text" id="ctl00_ContentPlaceHolder1_txtCaptcha"></td></tr></table>
+    <p><button class="btn" type="submit" onclick="window.__clicked = true">Submit and Pay</button></p>
+  </form>
+</div>
+</body>
+</html>

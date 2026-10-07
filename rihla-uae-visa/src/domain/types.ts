@@ -1,5 +1,5 @@
 export type VisaId = 'tourist' | 'family';
-export type DocSlotId = 'passport' | 'photo' | 'ticket' | 'hotel' | 'insurance' | 'sponsor_id' | 'tenancy' | 'salary' | 'relationship';
+export type DocSlotId = 'passport' | 'photo' | 'ticket' | 'hotel' | 'insurance' | 'bank' | 'sponsor_id' | 'tenancy' | 'salary' | 'relationship';
 export type Relationship = 'spouse' | 'parent' | 'child' | 'sibling' | 'friend';
 export type Emirate = 'Dubai' | 'Abu Dhabi' | 'Sharjah' | 'Ras Al Khaimah';
 

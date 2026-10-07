@@ -63,6 +63,23 @@ const Env = z.object({
   STRIPE_SECRET_KEY: z.string().default(''),
   STRIPE_WEBHOOK_SECRET: z.string().default(''),
 
+  /**
+   * Which ways to a visa the app offers (comma separated): five_year and airline are free and need no licence
+   * (the traveller applies on the official site, Rihla prepares and fills); partner is the paid visa filed by a
+   * licensed partner. Launch without a partner with ROUTES=five_year,airline.
+   */
+  ROUTES: z
+    .string()
+    .default('five_year,airline,partner')
+    .transform((v, ctx) => {
+      const list = v.split(',').map((r) => r.trim()).filter(Boolean);
+      const bad = list.filter((r) => !['five_year', 'airline', 'partner'].includes(r));
+      if (bad.length || !list.length) ctx.addIssue({ code: 'custom', message: `Unknown route: ${bad.join(', ') || '(none)'}` });
+      return list as ('five_year' | 'airline' | 'partner')[];
+    }),
+  /** Documents of free (self-apply) applications are deleted this many days after the traveller submits. */
+  SELF_RETENTION_DAYS: z.coerce.number().default(7),
+
   /** Who files the visa: the sandbox, your own ops team on a partner portal, or a partner's API. */
   FILING_PROVIDER: z.enum(['sandbox', 'manual', 'partner_http']).default('sandbox'),
   PARTNER_API_URL: z.string().default(''),
@@ -120,10 +137,13 @@ export function assertProductionReady(c: Config) {
   if (c.MAIL_DRIVER === 'resend' && !c.RESEND_API_KEY) problems.push('RESEND_API_KEY is missing');
   if (c.MAIL_DRIVER === 'ses' && !(c.SES_REGION || c.AWS_REGION)) problems.push('SES_REGION is missing');
   if (c.MAIL_DRIVER === 'ses' && !(c.SES_ACCESS_KEY_ID || c.AWS_ACCESS_KEY_ID)) problems.push('SES credentials are missing (set SES_ACCESS_KEY_ID and SES_SECRET_ACCESS_KEY outside AWS)');
-  if (c.PAYMENTS_DRIVER !== 'stripe') problems.push('PAYMENTS_DRIVER must be stripe');
-  if (c.FILING_PROVIDER === 'sandbox') problems.push('FILING_PROVIDER cannot be sandbox');
-  if (c.PAYMENTS_DRIVER === 'stripe' && (!c.STRIPE_SECRET_KEY || !c.STRIPE_WEBHOOK_SECRET)) problems.push('Stripe keys are missing');
-  if (c.FILING_PROVIDER === 'partner_http' && (!c.PARTNER_API_URL || !c.PARTNER_API_KEY)) problems.push('Partner API URL and key are missing');
+  // Payments and a filer are only needed when the paid partner route is on.
+  if (c.ROUTES.includes('partner')) {
+    if (c.PAYMENTS_DRIVER !== 'stripe') problems.push('PAYMENTS_DRIVER must be stripe (or take partner out of ROUTES)');
+    if (c.FILING_PROVIDER === 'sandbox') problems.push('FILING_PROVIDER cannot be sandbox (or take partner out of ROUTES)');
+    if (c.PAYMENTS_DRIVER === 'stripe' && (!c.STRIPE_SECRET_KEY || !c.STRIPE_WEBHOOK_SECRET)) problems.push('Stripe keys are missing');
+    if (c.FILING_PROVIDER === 'partner_http' && (!c.PARTNER_API_URL || !c.PARTNER_API_KEY)) problems.push('Partner API URL and key are missing');
+  }
   if (problems.length) throw new Error(`Not ready for production:\n  ${problems.join('\n  ')}`);
 }
 

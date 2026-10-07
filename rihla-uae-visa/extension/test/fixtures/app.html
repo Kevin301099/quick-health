@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Stand-in for the Rihla web app</title></head>
+<body>
+<p id="status">waiting</p>
+<script>
+  // Mirrors what the Rihla web app does: find the extension, then hand it the pack.
+  window.rihla = {
+    ready: new Promise((resolve) => {
+      window.addEventListener('message', (e) => { if (e.data?.source === 'rihla-extension' && e.data.type === 'rihla:ready') resolve(e.data.version); });
+      window.postMessage({ source: 'rihla-app', type: 'rihla:hello' }, location.origin);
+    }),
+    send(pack) {
+      return new Promise((resolve) => {
+        const id = Math.random().toString(36).slice(2);
+        window.addEventListener('message', function on(e) { if (e.data?.source === 'rihla-extension' && e.data.type === 'rihla:saved' && e.data.id === id) { removeEventListener('message', on); resolve(e.data); } });
+        window.postMessage({ source: 'rihla-app', type: 'rihla:pack', id, pack }, location.origin);
+      });
+    },
+  };
+</script>
+</body></html>

@@ -111,4 +111,11 @@ ALTER TABLE applications ADD COLUMN claimed_at timestamptz;
 ALTER TABLE login_codes ADD COLUMN ip_hash text;
 CREATE INDEX login_codes_ip ON login_codes (ip_hash, created_at DESC)`,
   },
+  {
+    id: '003_self_apply',
+    sql: `
+ALTER TABLE applications ADD COLUMN route text NOT NULL DEFAULT 'partner';
+ALTER TABLE applications ADD COLUMN airline text;
+ALTER TABLE applications ADD COLUMN self_ref text`,
+  },
 ];

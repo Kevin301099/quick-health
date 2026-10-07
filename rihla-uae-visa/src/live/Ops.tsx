@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Copy, ExternalLink, RefreshCw } from 'lucide-react';
+import { Check, ExternalLink, RefreshCw } from 'lucide-react';
 import { aed, cn, fmtDate } from '@/lib/utils';
 import { Pill, Spinner } from '@/components/ui';
 import { api, ApiError, type LiveApplication, type Status } from './api';
-import { ErrorNote, Label, LiveHeader, StatusPill } from './chrome';
+import { CopyRow, ErrorNote, Label, LiveHeader, StatusPill } from './chrome';
 import { useMe } from './hooks';
 import { SignIn } from './SignIn';
 
@@ -324,32 +324,6 @@ function OpsDetail({ id, onChange }: { id: string; onChange: () => void }) {
         <ErrorNote>{error}</ErrorNote>
       </div>
       )}
-    </div>
-  );
-}
-
-function CopyRow({ k, v }: { k: string; v: string }) {
-  const [done, setDone] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(v);
-      setDone(true);
-      window.setTimeout(() => setDone(false), 1200);
-    } catch {
-      /* clipboard refused: the value is selectable */
-    }
-  };
-  return (
-    <div className="flex items-center justify-between gap-2 border-b border-line py-1.5">
-      <dt className="text-[12.5px] text-muted">{k}</dt>
-      <dd className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate font-mono text-[13px] text-fg">{v || '—'}</span>
-        {v && (
-          <button type="button" onClick={copy} className="rounded p-1 text-faint hover:text-fg" aria-label={`Copy ${k}`}>
-            {done ? <Check size={13} /> : <Copy size={13} />}
-          </button>
-        )}
-      </dd>
     </div>
   );
 }

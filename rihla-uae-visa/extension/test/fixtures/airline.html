@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UAE visa for your trip — Test replica of an airline visa form</title>
+<style>
+  :root { font: 15px/1.4 system-ui, sans-serif; color: #222; }
+  body { margin: 0; background: #f7f5f2; }
+  header { background: #c8102e; color: #fff; padding: 16px 28px; font-weight: 700; letter-spacing: .02em; }
+  main { max-width: 760px; margin: 24px auto; background: #fff; border-radius: 12px; padding: 24px 28px; box-shadow: 0 8px 30px -14px #0003; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 12px 0; }
+  .f { display: flex; flex-direction: column; gap: 4px; }
+  .f label { font-size: 13px; color: #555; }
+  input, select { padding: 9px 10px; border: 1px solid #c9c4bd; border-radius: 8px; font: inherit; }
+  .dob { display: flex; gap: 6px; }
+  .step[hidden] { display: none; }
+  button { background: #c8102e; color: #fff; border: 0; border-radius: 999px; padding: 10px 22px; font: inherit; font-weight: 600; cursor: pointer; }
+  fieldset { border: 1px dashed #c9c4bd; border-radius: 10px; margin-top: 20px; }
+</style>
+</head>
+<body>
+<header>Manage booking · UAE visa (test replica)</header>
+<main>
+  <div class="step" id="step1">
+    <h2>Passenger 1 · Passport details</h2>
+    <div class="row">
+      <div class="f"><label for="firstName">First name</label><input id="firstName" data-model="firstName" autocomplete="off"></div>
+      <div class="f"><label for="middleName">Middle name</label><input id="middleName" data-model="middleName"></div>
+      <div class="f"><label for="lastName">Last name</label><input id="lastName" data-model="lastName"></div>
+    </div>
+    <div class="row">
+      <div class="f"><span id="dobLabel">Date of birth</span>
+        <div class="dob" role="group" aria-labelledby="dobLabel">
+          <select aria-label="Day" data-model="dobDay"><option value="">DD</option></select>
+          <select aria-label="Month" data-model="dobMonth"><option value="">MM</option></select>
+          <select aria-label="Year" data-model="dobYear"><option value="">YYYY</option></select>
+        </div>
+      </div>
+      <div class="f"><label for="gender">Gender</label><select id="gender" data-model="gender"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select></div>
+      <div class="f"><label for="nat">Nationality</label><select id="nat" data-model="nationality"><option value="">Select</option><option>Bangladeshi</option><option>Indian</option><option>Indonesian</option><option>Pakistani</option></select></div>
+    </div>
+    <div class="row">
+      <div class="f"><label for="ppn">Passport number</label><input id="ppn" data-model="passportNumber"></div>
+      <div class="f"><label for="ppexp">Passport expiry date</label><input id="ppexp" type="date" data-model="passportExpiry"></div>
+      <div class="f"><label for="email">Email address</label><input id="email" type="email" data-model="email"></div>
+    </div>
+    <button type="button" id="next">Continue</button>
+  </div>
+
+  <div class="step" id="step2" hidden>
+    <h2>Documents</h2>
+    <div class="row">
+      <div class="f"><label for="upPassport">Upload passport copy</label><input id="upPassport" type="file" accept="image/*,application/pdf"></div>
+      <div class="f"><label for="upPhoto">Upload a recent colour photo</label><input id="upPhoto" type="file" accept="image/jpeg,image/png"></div>
+    </div>
+    <fieldset>
+      <legend>Payment</legend>
+      <div class="row">
+        <div class="f"><label for="cardNumber">Card number</label><input id="cardNumber" autocomplete="cc-number"></div>
+        <div class="f"><label for="cardExpiry">Expiry date (MM/YY)</label><input id="cardExpiry" placeholder="MM/YY"></div>
+        <div class="f"><label for="cvv">CVV</label><input id="cvv"></div>
+      </div>
+      <div class="f"><label for="cardName">Name on card</label><input id="cardName"></div>
+    </fieldset>
+    <p><button type="button" id="pay" onclick="window.__paid = true">Pay and apply</button></p>
+  </div>
+</main>
+<script>
+  // A tiny controlled-input framework, like React or Angular: the model is the truth, and fields re-render from it.
+  window.model = {};
+  const day = document.querySelector('[data-model=dobDay]'), mon = document.querySelector('[data-model=dobMonth]'), yr = document.querySelector('[data-model=dobYear]');
+  for (let d = 1; d <= 31; d++) day.add(new Option(String(d).padStart(2, '0'), String(d).padStart(2, '0')));
+  ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].forEach((m, i) => mon.add(new Option(m, String(i + 1).padStart(2, '0'))));
+  for (let y = 2026; y >= 1920; y--) yr.add(new Option(String(y), String(y)));
+  document.querySelectorAll('[data-model]').forEach((el) => {
+    el.addEventListener('input', () => { model[el.dataset.model] = el.value; });
+    el.addEventListener('change', () => { model[el.dataset.model] = el.value; });
+    el.addEventListener('blur', () => { el.value = model[el.dataset.model] ?? ''; });
+  });
+  document.getElementById('next').onclick = () => { document.getElementById('step1').hidden = true; document.getElementById('step2').hidden = false; };
+</script>
+</body>
+</html>

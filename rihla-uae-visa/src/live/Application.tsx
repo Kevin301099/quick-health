@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowRight, Check, CreditCard, Download, FileText, Lock, PenLine, ScanLine, TriangleAlert, Upload, Wand2 } from 'lucide-react';
+import { ArrowRight, Check, CreditCard, Download, ExternalLink, FileText, Lock, PenLine, ScanLine, Send, TriangleAlert, Upload, Wand2 } from 'lucide-react';
 import { SLOTS } from '@/domain/visas';
+import { AIRLINES, ROUTE_SPECS } from '@/domain/routes';
 import type { DocSlotId, Profile } from '@/domain/types';
 import { analysePhoto, lightenBackground, shrinkDocument, type PhotoReport } from '@/domain/photo';
 import { aed, cn, fmtDate, formatBytes } from '@/lib/utils';
 import { Pill, Spinner } from '@/components/ui';
 import { ChecksReport, Checklist, PermitReady, StatusTimeline } from '@/components/cards/results';
 import { api, ApiError, uploadDocument, type Extraction, type LiveApplication, type LiveConfig, type LiveDoc } from './api';
-import { ErrorNote, Label, LiveHeader, Stages, StatusPill } from './chrome';
+import { CopyRow, ErrorNote, Label, LiveHeader, PARTNER_STAGES, SELF_STAGES, Stages, StatusPill } from './chrome';
+import { FILLER_URL, forgetInFiller, sendToFiller, useFiller } from './filler';
 import { useApplication, useLiveConfig, useMe } from './hooks';
 import { SignIn } from './SignIn';
 
@@ -20,7 +22,20 @@ export function LiveApplicationPage({ id, justPaid }: { id: string; justPaid: bo
   const { config } = useLiveConfig();
   const { app, setApp, error } = useApplication(id, (a) => justPaid && a.status === 'ready_to_pay');
 
-  const stage = !app ? 1 : app.status === 'draft' || app.status === 'needs_info' ? (app.readiness?.ready ? 2 : 1) : app.status === 'ready_to_pay' ? 3 : app.status === 'approved' ? 5 : 4;
+  const self = !!app && app.route !== 'partner';
+  const stage = !app
+    ? 1
+    : app.status === 'self_submitted'
+      ? 3
+      : app.status === 'draft' || app.status === 'needs_info'
+        ? app.readiness?.ready
+          ? 2
+          : 1
+        : app.status === 'ready_to_pay'
+          ? 3
+          : app.status === 'approved'
+            ? 5
+            : 4;
 
   let body: ReactNode;
   if (me === null) body = <SignIn title="Sign in to see your application" />;
@@ -33,7 +48,7 @@ export function LiveApplicationPage({ id, justPaid }: { id: string; justPaid: bo
     <div className="min-h-full bg-bg">
       <LiveHeader me={me}>
         <div className="hidden justify-center md:flex">
-          <Stages current={stage} />
+          <Stages current={stage} names={self ? SELF_STAGES : PARTNER_STAGES} />
         </div>
       </LiveHeader>
       <main className="mx-auto grid max-w-[1180px] gap-8 px-6 py-10 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -50,14 +65,23 @@ function Body({ app, setApp, config, justPaid }: { app: LiveApplication; setApp:
     case 'draft':
       return (
         <>
-          <Heading title="Your documents" text="Upload your passport and photo. We read the passport for you, check everything, and show you any problem before you pay." />
+          <Heading
+            title="Your documents"
+            text={
+              app.route === 'partner'
+                ? 'Upload your passport and photo. We read the passport for you, check everything, and show you any problem before you pay.'
+                : `Upload what ${app.site?.name ?? 'the official site'} asks for. We read your passport, check everything, then fill their form for you in your own browser.`
+            }
+          />
           <Documents app={app} setApp={setApp} config={config} />
           <Details app={app} setApp={setApp} />
           <TripPanel app={app} setApp={setApp} />
           <Checks app={app} />
-          <Sign app={app} setApp={setApp} config={config} />
+          {app.route === 'partner' ? <Sign app={app} setApp={setApp} config={config} /> : <FillOfficial app={app} setApp={setApp} />}
         </>
       );
+    case 'self_submitted':
+      return <SubmittedYourself app={app} config={config} />;
     case 'needs_info':
       return (
         <>
@@ -171,13 +195,15 @@ function Empty({ title, text }: { title: string; text: string }) {
 function Summary({ app }: { app: LiveApplication }) {
   const q = app.quote;
   const name = `${app.profile.given ?? ''} ${app.profile.surname ?? ''}`.trim();
+  const spec = ROUTE_SPECS[app.route ?? 'partner'];
+  const visa = app.route === 'five_year' ? '5 years' : app.route === 'airline' ? `${app.answers.days} days · ${app.airline ? AIRLINES[app.airline].name : 'airline'}` : `${app.answers.days} days`;
   return (
     <aside className="lg:sticky lg:top-24 lg:self-start" aria-label="Your application">
       <div className="ticket">
         <div className="ticket-body" style={{ ['--y' as string]: '56%' }}>
           <div className="px-6 pb-5 pt-6">
             <div className="flex items-center justify-between gap-2">
-              <div className="eyebrow">UAE tourist visa</div>
+              <div className="eyebrow">{spec.short}</div>
               <StatusPill status={app.status} />
             </div>
             <div className="mt-2 font-display text-[24px] font-bold leading-tight tracking-[-0.03em]">{name || 'Traveller'}</div>
@@ -185,21 +211,27 @@ function Summary({ app }: { app: LiveApplication }) {
               <KV k="Arrives" v={fmtDate(app.answers.arrival)} />
               <KV k="Leaves" v={fmtDate(app.answers.departure)} />
               <KV k="Entering" v={app.answers.emirate} />
-              <KV k="Visa" v={`${app.answers.days} days`} />
+              <KV k="Visa" v={visa} />
             </dl>
-            {app.providerRef && <div className="mt-4 font-mono text-[12.5px] text-faint">Ref {app.providerRef}</div>}
+            {(app.providerRef || app.selfRef) && <div className="mt-4 font-mono text-[12.5px] text-faint">Ref {app.providerRef ?? app.selfRef}</div>}
           </div>
           <div className="perf mx-6" />
           <div className="px-6 pb-6 pt-4 text-[13.5px]">
-            {q && (
+            {q && app.route === 'partner' && (
               <div className="flex items-end justify-between">
                 <span className="eyebrow">{app.payment?.status === 'paid' ? 'Paid' : 'Total'}</span>
                 <span className="font-display text-[26px] font-bold leading-none tracking-[-0.02em] tnum">{aed(q.total, 2)}</span>
               </div>
             )}
+            {app.route !== 'partner' && (
+              <div className="flex items-end justify-between">
+                <span className="eyebrow">To Rihla</span>
+                <span className="font-display text-[26px] font-bold leading-none tracking-[-0.02em] tnum">{aed(0)}</span>
+              </div>
+            )}
             <p className="mt-3 flex items-start gap-2 text-[12.5px] text-faint">
               <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
-              Documents are deleted 30 days after a decision.
+              {app.route === 'partner' ? 'Documents are deleted 30 days after a decision.' : 'Documents are deleted a week after you submit.'}
             </p>
           </div>
         </div>
@@ -222,8 +254,8 @@ function KV({ k, v }: { k: string; v: string }) {
 function Documents({ app, setApp, config }: { app: LiveApplication; setApp: (a: LiveApplication) => void; config: LiveConfig }) {
   const [extraction, setExtraction] = useState<Extraction | null>(app.extraction);
   const docs = new Map(app.documents.map((d) => [d.slot, d]));
-  const required = config.slots.required as DocSlotId[];
-  const optional = config.slots.optional as DocSlotId[];
+  const required = (app.slots?.required ?? config.slots.required) as DocSlotId[];
+  const optional = (app.slots?.optional ?? config.slots.optional) as DocSlotId[];
   return (
     <Panel icon={<FileText size={18} />} title="Documents" right={<Pill tone={required.every((s) => docs.has(s)) ? 'ok' : 'neutral'}>{required.filter((s) => docs.has(s)).length} of {required.length} required</Pill>}>
       <ul className="space-y-3">
@@ -234,7 +266,7 @@ function Documents({ app, setApp, config }: { app: LiveApplication; setApp: (a: 
       {extraction && extraction.status !== 'unavailable' && <ExtractionNote x={extraction} />}
       {extraction?.status === 'unavailable' && <p className="mt-3 text-[13px] text-faint">{extraction.note}</p>}
       <h3 className="mt-6 text-[14px] font-semibold text-fg">Optional, but they help</h3>
-      <p className="mt-0.5 text-[13px] text-muted">A return ticket and a hotel booking make an approval more likely and let us cross-check your dates.</p>
+      <p className="mt-0.5 text-[13px] text-muted">{app.route === 'five_year' ? 'A hotel booking for your first trip lets us cross-check your dates.' : 'A return ticket and a hotel booking make an approval more likely and let us cross-check your dates.'}</p>
       <ul className="mt-3 space-y-3">
         {optional.map((slot) => (
           <Slot key={slot} slot={slot} doc={docs.get(slot)} app={app} setApp={setApp} onExtraction={setExtraction} max={config.maxFileBytes} />
@@ -412,6 +444,7 @@ const FIELDS: { key: keyof Profile; label: string; type?: string; required?: boo
   { key: 'passportExpires', label: 'Passport expires', type: 'date', required: true },
   { key: 'phone', label: 'Mobile number', type: 'tel', required: true, hint: 'With country code' },
   { key: 'profession', label: 'Profession' },
+  { key: 'address', label: 'Home address', hint: 'Outside the UAE' },
 ];
 
 function Details({ app, setApp }: { app: LiveApplication; setApp: (a: LiveApplication) => void }) {
@@ -519,11 +552,11 @@ function TripPanel({ app, setApp }: { app: LiveApplication; setApp: (a: LiveAppl
         <div className="min-w-0">
           <h2 className="font-display text-[19px] font-semibold tracking-[-0.02em]">Your trip</h2>
           <p className="mt-0.5 text-[14px] text-muted">
-            {fmtDate(app.answers.arrival)} to {fmtDate(app.answers.departure)} · {app.answers.emirate} · {app.answers.days}-day visa
+            {fmtDate(app.answers.arrival)} to {fmtDate(app.answers.departure)} · {app.answers.emirate} · {app.route === 'five_year' ? '5-year visa, up to 90 days a visit' : `${app.answers.days}-day visa`}
           </p>
         </div>
         <div className="flex gap-2">
-          {issue?.id === 'stay' && app.answers.days === 30 && (
+          {issue?.id === 'stay' && app.answers.days === 30 && app.route !== 'five_year' && (
             <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => void save({ ...trip, days: 60 })}>
               Switch to the 60-day visa
             </button>
@@ -552,7 +585,7 @@ function TripPanel({ app, setApp }: { app: LiveApplication; setApp: (a: LiveAppl
               ))}
             </select>
           </div>
-          <div>
+          <div hidden={app.route === 'five_year'}>
             <Label htmlFor="tp-days">Visa length</Label>
             <select id="tp-days" className="field" value={trip.days} onChange={(e) => setTrip({ ...trip, days: Number(e.target.value) as 30 | 60 })}>
               <option value={30}>30 days</option>
@@ -704,6 +737,245 @@ function Pay({ app }: { app: LiveApplication }) {
         </button>
         <p className="mt-3 text-[13px] text-faint">You pay on a secure payment page. Your card details never reach Rihla.</p>
         <ErrorNote>{error}</ErrorNote>
+      </Panel>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ applying yourself */
+
+const dmy = (iso?: string) => (iso ? iso.split('-').reverse().join('/') : '');
+
+/**
+ * The free routes end here: the traveller applies on the official site, and Rihla Filler (a browser extension)
+ * fills the form in their own browser. They sign in, pay and press Submit themselves.
+ */
+function FillOfficial({ app, setApp }: { app: LiveApplication; setApp: (a: LiveApplication) => void }) {
+  const filler = useFiller();
+  const [sentUntil, setSentUntil] = useState<number | null>(null);
+  const [busy, setBusy] = useState<'send' | 'done' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reference, setReference] = useState('');
+  const r = app.readiness;
+  const site = app.site;
+  const siteName = site?.name ?? 'the official site';
+  const installed = filler.status === 'installed';
+
+  const send = async () => {
+    setBusy('send');
+    setError(null);
+    try {
+      const x = await sendToFiller(app.id);
+      setSentUntil(x.expiresAt ?? Date.now() + 24 * 3600_000);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const done = async () => {
+    setBusy('done');
+    setError(null);
+    try {
+      const res = await api<{ application: LiveApplication }>(`/v1/applications/${app.id}/self-submitted`, { body: { reference } });
+      if (installed) await forgetInFiller();
+      setApp(res.application);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      setError((e as ApiError).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!r?.ready) {
+    const missing = r ? [...r.missingDocs.map((x) => SLOTS[x as DocSlotId]?.label ?? x), ...r.missingFields, ...r.blocking] : [];
+    return (
+      <Panel icon={<Wand2 size={18} />} title={`Apply on ${siteName}`}>
+        <div className="rounded-2xl bg-surface2 p-4 text-[14px] text-muted">
+          <div className="font-medium text-fg">Before we can fill their form, we still need:</div>
+          <ul className="mt-1.5 list-disc pl-5">
+            {missing.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </div>
+      </Panel>
+    );
+  }
+
+  const p = app.profile;
+  const copyRows: [string, string][] = [
+    ['Given names', String(p.given ?? '')],
+    ['Surname', String(p.surname ?? '')],
+    ['Sex', p.sex === 'M' ? 'Male' : p.sex === 'F' ? 'Female' : ''],
+    ['Date of birth', dmy(p.dob)],
+    ['Place of birth', String(p.birthplace ?? '')],
+    ['Passport number', String(p.passportNo ?? '')],
+    ['Passport issued', dmy(p.passportIssued)],
+    ['Passport expires', dmy(p.passportExpires)],
+    ['Email', String(p.email ?? '')],
+    ['Mobile', String(p.phone ?? '')],
+    ['Profession', String(p.profession ?? '')],
+    ['Home address', String(p.address ?? '')],
+    ['Arrival', dmy(app.answers.arrival)],
+    ['Departure', dmy(app.answers.departure)],
+  ];
+
+  const steps: { title: string; done: boolean; body: ReactNode }[] = [
+    {
+      title: 'Add Rihla Filler to your browser',
+      done: installed,
+      body: installed ? (
+        <p>Installed{filler.version ? ` (version ${filler.version})` : ''}. It only reads a page when you ask it to.</p>
+      ) : filler.status === 'checking' ? (
+        <p className="flex items-center gap-2">
+          <Spinner size={14} /> Looking for Rihla Filler…
+        </p>
+      ) : (
+        <>
+          <p>A free extension for Chrome, Edge and Brave on a computer. It types your details into the official form; it cannot submit or pay.</p>
+          {FILLER_URL ? (
+            <a className="btn btn-primary btn-sm mt-2.5" href={FILLER_URL} target="_blank" rel="noopener noreferrer">
+              Add Rihla Filler <ExternalLink size={14} aria-hidden />
+            </a>
+          ) : (
+            <p className="mt-1.5 text-[13px] text-faint">Rihla Filler is in beta. Ask us for the install link; this page notices it as soon as it is added.</p>
+          )}
+        </>
+      ),
+    },
+    {
+      title: 'Send your details to it',
+      done: !!sentUntil,
+      body: sentUntil ? (
+        <p>Sent. Kept only in this browser, and deleted after 24 hours or when you tell us you submitted.</p>
+      ) : (
+        <>
+          <p>Your details and documents go from this page to the extension, inside your browser.</p>
+          <button type="button" className="btn btn-primary btn-sm mt-2.5" onClick={send} disabled={!installed || busy === 'send'}>
+            {busy === 'send' ? <Spinner /> : <Send size={14} aria-hidden />} Send to Rihla Filler
+          </button>
+        </>
+      ),
+    },
+    {
+      title: `Open ${siteName} and sign in yourself`,
+      done: false,
+      body: (
+        <>
+          {site && (
+            <ul className="list-disc space-y-0.5 pl-5">
+              {site.steps.map((x) => (
+                <li key={x}>{x}</li>
+              ))}
+            </ul>
+          )}
+          {site && (
+            <a className="btn btn-outline btn-sm mt-2.5" href={site.url} target="_blank" rel="noopener noreferrer">
+              Open {site.name} <ExternalLink size={14} aria-hidden />
+            </a>
+          )}
+        </>
+      ),
+    },
+    {
+      title: 'Fill each page with one click',
+      done: false,
+      body: (
+        <p>
+          On each page of their form, click the Rihla icon in the toolbar and choose <strong className="text-fg">Fill this page</strong>, or press <kbd className="rounded border border-line px-1 font-mono text-[12px]">Alt+Shift+F</kbd>. Green fields are filled; check anything marked in amber.
+        </p>
+      ),
+    },
+    {
+      title: 'Answer, pay and submit there',
+      done: false,
+      body: <p>The declarations, the visa fee and the Submit button are yours alone. Rihla never presses Submit and never sees your card.</p>,
+    },
+  ];
+
+  return (
+    <Panel icon={<Wand2 size={18} />} title={`Apply on ${siteName}`} tone="brand">
+      <p className="-mt-1 mb-4 max-w-[62ch] text-[14.5px] text-muted">Everything is checked. You apply on the official site yourself, and Rihla Filler fills their form for you in your own browser.</p>
+      <ol className="space-y-4">
+        {steps.map((st, i) => (
+          <li key={st.title} className="flex gap-3.5">
+            <span className={cn('mt-0.5 grid size-7 shrink-0 place-items-center rounded-full text-[12.5px] font-semibold', st.done ? 'bg-brand text-[var(--on-brand)]' : 'border border-line text-muted')}>
+              {st.done ? <Check size={14} strokeWidth={3} aria-hidden /> : i + 1}
+            </span>
+            <div className="min-w-0 flex-1 text-[14px] text-muted">
+              <div className="text-[15px] font-semibold text-fg">{st.title}</div>
+              <div className="mt-1">{st.body}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mt-6 rounded-2xl border border-line p-4">
+        <div className="text-[15px] font-semibold text-fg">Submitted it? Tell us</div>
+        <p className="mt-0.5 text-[13.5px] text-muted">We then delete your documents within a week, and Rihla Filler forgets your details.</p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="min-w-0 flex-1 basis-[220px]">
+            <Label htmlFor="self-ref" hint="Optional">
+              Their application number
+            </Label>
+            <input id="self-ref" className="field" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={60} autoComplete="off" />
+          </div>
+          <button type="button" className="btn btn-primary" onClick={done} disabled={busy === 'done'}>
+            {busy === 'done' ? <Spinner /> : <Check size={16} aria-hidden />} I submitted it
+          </button>
+        </div>
+      </div>
+
+      <details className="group mt-4">
+        <summary className="cursor-pointer text-[14px] font-medium text-brand">No computer with Chrome? Copy your details instead</summary>
+        <dl className="mt-3">
+          {copyRows.map(([k, v]) => (
+            <CopyRow key={k} k={k} v={v} />
+          ))}
+        </dl>
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {app.documents
+            .filter((d) => d.url)
+            .map((d) => (
+              <li key={d.id}>
+                <a className="btn btn-outline btn-sm" href={d.url} target="_blank" rel="noopener noreferrer">
+                  <Download size={13} aria-hidden /> {SLOTS[d.slot as DocSlotId]?.label ?? d.slot}
+                </a>
+              </li>
+            ))}
+        </ul>
+      </details>
+      <ErrorNote>{error}</ErrorNote>
+    </Panel>
+  );
+}
+
+function SubmittedYourself({ app, config }: { app: LiveApplication; config: LiveConfig }) {
+  const site = app.site;
+  const days = config.selfRetentionDays ?? 7;
+  return (
+    <>
+      <Heading title={`Submitted on ${site?.name ?? 'the official site'}`} text="Well done. The visa now comes from them, and they email you about your application." />
+      <Panel icon={<Check size={18} />} title="What happens now" tone="ok">
+        <ul className="space-y-2.5 text-[14.5px] text-muted">
+          {app.selfRef && (
+            <li>
+              Your reference: <span className="font-mono text-fg">{app.selfRef}</span>
+            </li>
+          )}
+          <li>Check your email, including the spam folder, for messages from {site?.name ?? 'the official site'}. If they ask for anything more, answer them there.</li>
+          <li>
+            We delete your documents {days} day{days === 1 ? '' : 's'} after you submitted. Rihla Filler has already forgotten your details.
+          </li>
+          {app.route === 'five_year' && <li>Each visit can last up to 90 days, and at most 180 days a year, for five years.</li>}
+        </ul>
+        {site && (
+          <a className="btn btn-outline btn-sm mt-4" href={site.url} target="_blank" rel="noopener noreferrer">
+            Open {site.name} <ExternalLink size={14} aria-hidden />
+          </a>
+        )}
       </Panel>
     </>
   );

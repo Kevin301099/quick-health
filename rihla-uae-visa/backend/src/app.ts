@@ -20,6 +20,8 @@ import {
   markPaid,
   ownApp,
   packetFor,
+  packFor,
+  selfSubmitted,
   permitUrl,
   publicApp,
   respond,
@@ -33,6 +35,7 @@ import { quoteFor } from './payments';
 import { verifyLocal } from './storage';
 import { tick } from './jobs';
 import { checkEligibility, NATIONALITIES } from '@/domain/nationalities';
+import { AIRLINES, ROUTE_SPECS } from '@/domain/routes';
 
 type Env = { Variables: { user?: SessionUser } };
 
@@ -112,9 +115,12 @@ export function buildApp(d: Deps) {
       extraction: d.config.ANTHROPIC_API_KEY ? 'on' : 'off',
       quotes: { 30: quoteFor(d.config, 30), 60: quoteFor(d.config, 60) },
       slots: { required: REQUIRED_SLOTS, optional: OPTIONAL_SLOTS },
+      routes: d.config.ROUTES.map((id) => ROUTE_SPECS[id]),
+      airlines: Object.values(AIRLINES),
       maxFileBytes: MAX_FILE_BYTES,
       declarations: DECLARATIONS,
       retentionDays: d.config.RETENTION_DAYS,
+      selfRetentionDays: d.config.SELF_RETENTION_DAYS,
       nationalities: NATIONALITIES.map((n) => ({ ...n, eligibility: checkEligibility(n.code, null).status })),
     }),
   );
@@ -138,8 +144,8 @@ export function buildApp(d: Deps) {
 
   app.post('/v1/applications', async (c) => {
     const u = currentUser(c);
-    const body = await c.req.json().catch(() => ({}));
-    const a = await createApplication(d, u, (body as { answers?: unknown }).answers);
+    const body = (await c.req.json().catch(() => ({}))) as { answers?: unknown; route?: unknown; airline?: unknown };
+    const a = await createApplication(d, u, body.answers, { route: body.route, airline: body.airline });
     return c.json({ application: await publicApp(d, a) }, 201);
   });
 
@@ -200,6 +206,20 @@ export function buildApp(d: Deps) {
     const a = await ownApp(d, currentUser(c).id, c.req.param('id'));
     const { message } = await json(c, z.object({ message: z.string().max(1000) }));
     const updated = await respond(d, a, message);
+    return c.json({ application: await publicApp(d, updated, { withFiles: true }) });
+  });
+
+  /** Details and short-lived document links for the Rihla extension, which fills the official form. Free routes only. */
+  app.get('/v1/applications/:id/pack', async (c) => {
+    const a = await ownApp(d, currentUser(c).id, c.req.param('id'));
+    c.header('cache-control', 'no-store');
+    return c.json({ pack: await packFor(d, a) });
+  });
+
+  app.post('/v1/applications/:id/self-submitted', async (c) => {
+    const a = await ownApp(d, currentUser(c).id, c.req.param('id'));
+    const { reference } = await json(c, z.object({ reference: z.string().max(60).default('') }));
+    const updated = await selfSubmitted(d, a, reference);
     return c.json({ application: await publicApp(d, updated, { withFiles: true }) });
   });
 
