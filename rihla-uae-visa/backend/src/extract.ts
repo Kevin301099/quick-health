@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import type Anthropic from '@anthropic-ai/sdk';
+import type { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import type { Config } from './config';
 import { parseMrz } from './mrz';
@@ -8,6 +8,10 @@ import { parseMrz } from './mrz';
   Reads a passport photo page. One model call per unique file (results are cached by the file's hash),
   then the machine-readable zone's check digits decide whether the reading can be trusted.
   A reading that fails the checks is never used silently: the person confirms the fields themselves.
+
+  Cost: every billed call is returned with its token counts and price so the caller can record it,
+  enforce budgets and show spend. With EXTRACT_FAST_MODEL set, a cheaper model reads first and its
+  answer is kept only when the check digits prove it; anything else goes to EXTRACT_MODEL.
 */
 
 const PassportReading = z.object({
@@ -51,8 +55,33 @@ export interface Extraction {
   model?: string;
 }
 
+/** One billed model call. */
+export interface AiCall {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  outcome: Extraction['status'];
+}
+
 export interface Extractor {
-  passport(file: Uint8Array, mime: string): Promise<Extraction>;
+  /** `calls` lists every billed model call made for this file (empty when nothing was billed). */
+  passport(file: Uint8Array, mime: string): Promise<{ extraction: Extraction; calls: AiCall[] }>;
+}
+
+/** US$ per million tokens, [input, output]. Unknown models are priced as the most expensive, so budgets err safe. */
+const PRICES: [model: string, input: number, output: number][] = [
+  ['claude-opus-5-5', 4, 20],
+  ['claude-sonnet-5-5', 2, 10],
+  ['claude-haiku-5-5', 0.1, 0.5],
+  ['claude-haiku-4-5', 1, 5],
+];
+
+export function priceOf(model: string, u: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null }) {
+  const row = PRICES.find(([m]) => model.startsWith(m)) ?? PRICES.reduce((a, b) => (b[2] > a[2] ? b : a));
+  const [, inp, out] = row;
+  const input = u.input_tokens + (u.cache_creation_input_tokens ?? 0) * 1.25 + (u.cache_read_input_tokens ?? 0) * 0.1;
+  return Math.round(((input * inp + u.output_tokens * out) / 1e6) * 1e6) / 1e6;
 }
 
 const INSTRUCTIONS = `Read the passport photo page in this file and fill in the schema.
@@ -63,40 +92,65 @@ Rules:
 - Copy the two machine-readable lines at the bottom character for character, including every '<'. Each line has 44 characters.
 - If the file is not a passport photo page, set is_passport_photo_page to false and leave the other fields empty.`;
 
+export const unavailable = (note = 'Automatic reading is off. Please type your passport details.'): Extraction => ({ status: 'unavailable', verified: false, fields: {}, attention: [], note });
+
 export function createExtractor(c: Config): Extractor {
-  if (!c.ANTHROPIC_API_KEY) {
-    return {
-      async passport() {
-        return { status: 'unavailable', verified: false, fields: {}, attention: [], note: 'Automatic reading is off. Please type your passport details.' };
-      },
-    };
+  if (!c.ANTHROPIC_API_KEY) return { passport: async () => ({ extraction: unavailable(), calls: [] }) };
+
+  // The SDK loads on the first passport, so cold starts for every other request stay small.
+  type Sdk = { client: Anthropic; APIError: typeof Anthropic.APIError; format: ReturnType<typeof betaZodOutputFormat<typeof PassportReading>> };
+  let loading: Promise<Sdk> | null = null;
+  const sdk = () =>
+    (loading ??= Promise.all([import('@anthropic-ai/sdk'), import('@anthropic-ai/sdk/helpers/beta/zod')]).then(([a, h]) => ({
+      client: new a.default({ apiKey: c.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 45_000 }),
+      APIError: a.APIError,
+      format: h.betaZodOutputFormat(PassportReading),
+    })));
+
+  const busy: Extraction = { status: 'failed', verified: false, fields: {}, attention: [], note: 'Automatic reading is busy right now. Please type your details.' };
+
+  async function readWith(model: string, file: Uint8Array, mime: string): Promise<{ extraction: Extraction; call: AiCall | null }> {
+    const { client, APIError, format } = await sdk();
+    const data = Buffer.from(file).toString('base64');
+    const source =
+      mime === 'application/pdf'
+        ? ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } as const)
+        : ({ type: 'image', source: { type: 'base64', media_type: mime as 'image/jpeg' | 'image/png' | 'image/webp', data } } as const);
+    try {
+      const res = await client.beta.messages.parse({
+        model,
+        max_tokens: 8000,
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        output_config: { effort: c.EXTRACT_EFFORT, format },
+        messages: [{ role: 'user', content: [source, { type: 'text', text: INSTRUCTIONS }] }],
+      });
+      const extraction: Extraction =
+        res.stop_reason === 'refusal' || !res.parsed_output
+          ? { status: 'failed', verified: false, fields: {}, attention: [], note: 'We could not read this file automatically. Please type your details.', model: res.model }
+          : { ...interpret(res.parsed_output), model: res.model };
+      const call: AiCall = { model: res.model, inputTokens: res.usage.input_tokens, outputTokens: res.usage.output_tokens, costUsd: priceOf(res.model, res.usage), outcome: extraction.status };
+      return { extraction, call };
+    } catch (e) {
+      const msg = e instanceof APIError ? `${e.status} ${e.message}` : String(e);
+      console.error(`[extract] ${model} could not read the passport:`, msg);
+      return { extraction: busy, call: null };
+    }
   }
-  const client = new Anthropic({ apiKey: c.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 90_000 });
+
   return {
     async passport(file, mime) {
-      const data = Buffer.from(file).toString('base64');
-      const source =
-        mime === 'application/pdf'
-          ? ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } } as const)
-          : ({ type: 'image', source: { type: 'base64', media_type: mime as 'image/jpeg' | 'image/png' | 'image/webp', data } } as const);
-      try {
-        const res = await client.beta.messages.parse({
-          model: c.EXTRACT_MODEL,
-          max_tokens: 8000,
-          betas: ['server-side-fallback-2026-07-01'],
-          fallbacks: 'default',
-          output_config: { effort: c.EXTRACT_EFFORT, format: betaZodOutputFormat(PassportReading) },
-          messages: [{ role: 'user', content: [source, { type: 'text', text: INSTRUCTIONS }] }],
-        });
-        if (res.stop_reason === 'refusal' || !res.parsed_output) {
-          return { status: 'failed', verified: false, fields: {}, attention: [], note: 'We could not read this file automatically. Please type your details.', model: res.model };
-        }
-        return { ...interpret(res.parsed_output), model: res.model };
-      } catch (e) {
-        const msg = e instanceof Anthropic.APIError ? `${e.status} ${e.message}` : String(e);
-        console.error('[extract] passport reading failed:', msg);
-        return { status: 'failed', verified: false, fields: {}, attention: [], note: 'Automatic reading is busy right now. Please type your details.' };
+      const models = c.EXTRACT_FAST_MODEL && c.EXTRACT_FAST_MODEL !== c.EXTRACT_MODEL ? [c.EXTRACT_FAST_MODEL, c.EXTRACT_MODEL] : [c.EXTRACT_MODEL];
+      const calls: AiCall[] = [];
+      let extraction = busy;
+      for (const model of models) {
+        const r = await readWith(model, file, mime);
+        if (r.call) calls.push(r.call);
+        extraction = r.extraction;
+        // A first pass is kept only when the passport's own check digits prove it right.
+        if (extraction.verified) break;
       }
+      return { extraction, calls };
     },
   };
 }

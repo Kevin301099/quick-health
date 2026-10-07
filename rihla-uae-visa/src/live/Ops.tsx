@@ -51,12 +51,14 @@ export function OpsConsole() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const r = await api<{ applications: Row[]; counts: Record<string, number> }>(`/v1/ops/applications?status=${queue}`);
+      const [r, u] = await Promise.all([api<{ applications: Row[]; counts: Record<string, number> }>(`/v1/ops/applications?status=${queue}`), api<Usage>('/v1/ops/usage')]);
       setRows(r.applications);
       setCounts(r.counts);
+      setUsage(u);
       setError(null);
     } catch (e) {
       setError((e as ApiError).message);
@@ -66,8 +68,14 @@ export function OpsConsole() {
   useEffect(() => {
     if (!me?.ops) return;
     void load();
-    const t = window.setInterval(load, 15000);
-    return () => window.clearInterval(t);
+    // Refresh while someone is looking; a hidden tab costs nothing.
+    const t = window.setInterval(() => !document.hidden && void load(), 30_000);
+    const onVisible = () => !document.hidden && void load();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [me, load]);
 
   return (
@@ -102,6 +110,7 @@ export function OpsConsole() {
                   </button>
                 ))}
               </div>
+              {usage && <SpendLine usage={usage} />}
               <ErrorNote>{error}</ErrorNote>
               <ul className="ledger mt-4 rounded-2xl border border-line bg-surface">
                 {rows === null && (
@@ -132,6 +141,38 @@ export function OpsConsole() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+interface Usage {
+  month: { calls: number; costUsd: number; budgetUsd: number; applications: number; perApplicationUsd: number };
+  today: { calls: number; costUsd: number };
+  models: { main: string; fast: string | null };
+}
+
+const usd = (n: number) => (n === 0 ? '$0' : `$${n < 1 ? n.toFixed(3) : n.toFixed(2)}`);
+
+/** What passport reading has cost this month, against the budget that pauses it. */
+function SpendLine({ usage }: { usage: Usage }) {
+  const { month } = usage;
+  const share = month.budgetUsd > 0 ? Math.min(1, month.costUsd / month.budgetUsd) : 0;
+  return (
+    <div className="mt-4 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[13px] text-muted">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span>
+          Passport reading this month <span className="font-mono font-semibold text-fg tnum">{usd(month.costUsd)}</span>
+          {month.budgetUsd > 0 && <span className="tnum"> of {usd(month.budgetUsd)}</span>}
+        </span>
+        <span className="tnum">
+          {month.applications} applications · {usd(month.perApplicationUsd)} each
+        </span>
+      </div>
+      {month.budgetUsd > 0 && (
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface2" aria-hidden>
+          <div className={cn('h-full rounded-full', share >= 0.9 ? 'bg-attn' : 'bg-brand')} style={{ width: `${Math.max(2, share * 100)}%` }} />
+        </div>
+      )}
     </div>
   );
 }

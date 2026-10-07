@@ -6,8 +6,10 @@
   "description": "Rihla API: applications, documents, passport reading, payments and filing through a licensed partner.",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
-    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/server.js --packages=external --tsconfig=tsconfig.json --loader:.sql=text",
+    "start": "node --enable-source-maps dist/server/server.mjs",
+    "build": "node scripts/bundle.mjs",
+    "migrate": "node --enable-source-maps dist/server/migrate.mjs",
+    "try-reading": "tsx src/try-reading.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

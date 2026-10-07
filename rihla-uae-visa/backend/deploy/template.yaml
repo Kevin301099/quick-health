@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Rihla API on AWS Lambda. Billed per request: nothing runs, and nothing is billed, between visitors.
+  Build first (npm run build), then: sam deploy --guided -t deploy/template.yaml
+  Region me-central-1 (UAE) keeps processing in the country.
+
+Parameters:
+  AppUrl:
+    Type: String
+    Description: Public URL of the web app, for example https://rihla.ae (payment and email links point here)
+  OpsEmails:
+    Type: String
+    Description: Emails allowed into the ops console, comma separated
+  MailFrom:
+    Type: String
+    Description: Sender for sign-in codes and updates, for example "Rihla <visas@rihla.ae>". Verify the domain in SES first.
+  SesRegion:
+    Type: String
+    Default: ''
+    Description: Region your SES domain is verified in. Empty means the stack's own region.
+  FilingProvider:
+    Type: String
+    AllowedValues: [manual, partner_http]
+    Default: manual
+  PartnerApiUrl:
+    Type: String
+    Default: ''
+  PartnerApiKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+  AuthSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: A random string of 32 or more characters (openssl rand -hex 32)
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: Postgres connection string. With Neon, use the pooled one (host contains -pooler) and sslmode=require.
+  S3Endpoint:
+    Type: String
+    Description: For example https://<account>.r2.cloudflarestorage.com or https://s3.me-central-1.amazonaws.com
+  S3Region:
+    Type: String
+    Default: auto
+  S3Bucket:
+    Type: String
+  S3AccessKeyId:
+    Type: String
+    NoEcho: true
+  S3SecretAccessKey:
+    Type: String
+    NoEcho: true
+  StripeSecretKey:
+    Type: String
+    NoEcho: true
+  StripeWebhookSecret:
+    Type: String
+    NoEcho: true
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Leave empty to have travellers type their passport details instead
+  ExtractFastModel:
+    Type: String
+    Default: ''
+    Description: Optional cheaper first pass for passport reading, for example claude-haiku-5-5
+  AiMonthlyBudgetUsd:
+    Type: Number
+    Default: 50
+    Description: Passport reading pauses once this month's model spend reaches this (0 = no cap)
+  GovFeeTourist30:
+    Type: Number
+    Default: 252
+  GovFeeTourist60:
+    Type: Number
+    Default: 352
+  ServiceFee:
+    Type: Number
+    Default: 99
+  TickRate:
+    Type: String
+    Default: rate(10 minutes)
+    Description: How often background work runs. rate(10 minutes) with a partner API, rate(1 hour) with manual filing.
+  MaxConcurrency:
+    Type: Number
+    Default: 0
+    Description: >
+      Hard cap on simultaneous instances, which also caps spend and database connections. 0 = no cap.
+      20 is plenty at launch; new AWS accounts may need a quota increase before any cap can be set.
+  Architecture:
+    Type: String
+    AllowedValues: [arm64, x86_64]
+    Default: arm64
+    Description: arm64 (Graviton) is about 20% cheaper per second where the region offers it
+
+Conditions:
+  CapConcurrency: !Not [!Equals [!Ref MaxConcurrency, 0]]
+  OwnSesRegion: !Not [!Equals [!Ref SesRegion, '']]
+
+Resources:
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # Logs are billed by volume and kept forever by default; two weeks is enough to debug.
+      RetentionInDays: 14
+
+  RihlaApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../dist/lambda
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures: [!Ref Architecture]
+      MemorySize: 512
+      Timeout: 150
+      ReservedConcurrentExecutions: !If [CapConcurrency, !Ref MaxConcurrency, !Ref AWS::NoValue]
+      LoggingConfig:
+        LogGroup: !Ref ApiLogs
+        LogFormat: Text
+      FunctionUrlConfig:
+        # The app answers CORS itself, so the URL adds no CORS settings of its own.
+        AuthType: NONE
+        InvokeMode: BUFFERED
+      Environment:
+        Variables:
+          NODE_ENV: production
+          NODE_OPTIONS: --enable-source-maps
+          APP_URL: !Ref AppUrl
+          CORS_ORIGINS: !Ref AppUrl
+          OPS_EMAILS: !Ref OpsEmails
+          AUTH_SECRET: !Ref AuthSecret
+          DATABASE_URL: !Ref DatabaseUrl
+          DB_POOL_MAX: '2'
+          MIGRATE_ON_BOOT: 'false'
+          STORAGE_DRIVER: s3
+          S3_ENDPOINT: !Ref S3Endpoint
+          S3_REGION: !Ref S3Region
+          S3_BUCKET: !Ref S3Bucket
+          S3_ACCESS_KEY_ID: !Ref S3AccessKeyId
+          S3_SECRET_ACCESS_KEY: !Ref S3SecretAccessKey
+          MAIL_DRIVER: ses
+          SES_REGION: !If [OwnSesRegion, !Ref SesRegion, !Ref AWS::Region]
+          MAIL_FROM: !Ref MailFrom
+          PAYMENTS_DRIVER: stripe
+          STRIPE_SECRET_KEY: !Ref StripeSecretKey
+          STRIPE_WEBHOOK_SECRET: !Ref StripeWebhookSecret
+          FILING_PROVIDER: !Ref FilingProvider
+          PARTNER_API_URL: !Ref PartnerApiUrl
+          PARTNER_API_KEY: !Ref PartnerApiKey
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          EXTRACT_FAST_MODEL: !Ref ExtractFastModel
+          AI_MONTHLY_BUDGET_USD: !Ref AiMonthlyBudgetUsd
+          GOV_FEE_TOURIST_30: !Ref GovFeeTourist30
+          GOV_FEE_TOURIST_60: !Ref GovFeeTourist60
+          SERVICE_FEE: !Ref ServiceFee
+          TICK_SECONDS: '0'
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub
+                - arn:${AWS::Partition}:ses:${Region}:${AWS::AccountId}:identity/*
+                - Region: !If [OwnSesRegion, !Ref SesRegion, !Ref AWS::Region]
+      Events:
+        Tick:
+          # The scheduler invokes the function directly; the public URL cannot send this event.
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref TickRate
+            Input: '{"rihla":"tick"}'
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+
+Outputs:
+  ApiUrl:
+    Description: Build the web app with NEXT_PUBLIC_API_URL set to this (without the trailing slash), and point the Stripe webhook at <this>v1/webhooks/stripe
+    Value: !GetAtt RihlaApiUrl.FunctionUrl

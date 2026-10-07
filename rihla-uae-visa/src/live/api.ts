@@ -56,6 +56,30 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return data as T;
 }
 
+/**
+ * A GET that only downloads when something changed: it sends back the tag from the last response and treats
+ * an empty 304 as "same as before". Keeps polling cheap for the traveller's data plan and for the API.
+ */
+export async function getIfChanged<T>(path: string, etag: string | null): Promise<{ changed: false } | { changed: true; data: T; etag: string | null }> {
+  const headers: Record<string, string> = {};
+  const token = session.token;
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (etag) headers['if-none-match'] = etag;
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { headers, cache: 'no-store' });
+  } catch {
+    throw new ApiError(0, 'offline', 'We could not reach Rihla. Check your connection and try again.');
+  }
+  if (res.status === 304) return { changed: false };
+  const data = (await res.json().catch(() => null)) as (T & { error?: { code: string; message: string } }) | null;
+  if (!res.ok) {
+    if (res.status === 401) session.set(null);
+    throw new ApiError(res.status, data?.error?.code ?? 'error', data?.error?.message ?? 'Something went wrong. Please try again.');
+  }
+  return { changed: true, data: data as T, etag: res.headers.get('etag') };
+}
+
 /* ------------------------------------------------------------------ shapes the API returns */
 
 export interface Quote {

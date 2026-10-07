@@ -89,4 +89,26 @@ CREATE TABLE payment_events (
   created_at timestamptz NOT NULL DEFAULT now()
 )`,
   },
+  {
+    id: '002_costs',
+    sql: `
+CREATE TABLE ai_usage (
+  id bigserial PRIMARY KEY,
+  application_id uuid,
+  purpose text NOT NULL,
+  model text NOT NULL,
+  input_tokens int NOT NULL,
+  output_tokens int NOT NULL,
+  cost_usd numeric(12, 6) NOT NULL,
+  outcome text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ai_usage_created ON ai_usage (created_at);
+CREATE INDEX ai_usage_app ON ai_usage (application_id);
+
+ALTER TABLE applications ADD COLUMN claimed_at timestamptz;
+
+ALTER TABLE login_codes ADD COLUMN ip_hash text;
+CREATE INDEX login_codes_ip ON login_codes (ip_hash, created_at DESC)`,
+  },
 ];

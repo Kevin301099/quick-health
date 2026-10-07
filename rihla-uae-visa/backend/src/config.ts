@@ -29,6 +29,13 @@ const Env = z.object({
   /** postgres://... in production. Empty means an embedded PGlite database on disk (or in memory for tests). */
   DATABASE_URL: z.string().default(''),
   PGLITE_DIR: z.string().default('./data/db'),
+  /** Connections per process. 1 or 2 on Lambda (each instance serves one request at a time); 5 on a server. */
+  DB_POOL_MAX: z.coerce.number().int().min(1).default(5),
+  /** Apply pending migrations at start-up. Turn off when the deploy step runs `npm run migrate`. */
+  MIGRATE_ON_BOOT: z
+    .enum(['true', 'false', '1', '0'])
+    .default('true')
+    .transform((v) => v === 'true' || v === '1'),
 
   STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
   LOCAL_STORAGE_DIR: z.string().default('./data/files'),
@@ -38,9 +45,19 @@ const Env = z.object({
   S3_ACCESS_KEY_ID: z.string().default(''),
   S3_SECRET_ACCESS_KEY: z.string().default(''),
 
-  MAIL_DRIVER: z.enum(['console', 'resend']).default('console'),
+  /** ses bills per email (about $0.10 per 1,000) with no monthly plan; resend is the simplest to set up. */
+  MAIL_DRIVER: z.enum(['console', 'resend', 'ses']).default('console'),
   RESEND_API_KEY: z.string().default(''),
   MAIL_FROM: z.string().default('Rihla <visas@example.com>'),
+  SES_REGION: z.string().default(''),
+  /** Optional. On AWS Lambda leave these empty and the function's own role is used. */
+  SES_ACCESS_KEY_ID: z.string().default(''),
+  SES_SECRET_ACCESS_KEY: z.string().default(''),
+  /** Set by AWS Lambda for the function's role. */
+  AWS_REGION: z.string().default(''),
+  AWS_ACCESS_KEY_ID: z.string().default(''),
+  AWS_SECRET_ACCESS_KEY: z.string().default(''),
+  AWS_SESSION_TOKEN: z.string().default(''),
 
   PAYMENTS_DRIVER: z.enum(['fake', 'stripe']).default('fake'),
   STRIPE_SECRET_KEY: z.string().default(''),
@@ -56,6 +73,15 @@ const Env = z.object({
   ANTHROPIC_API_KEY: z.string().default(''),
   EXTRACT_MODEL: z.string().default('claude-opus-5-5'),
   EXTRACT_EFFORT: z.enum(['low', 'medium', 'high']).default('low'),
+  /**
+   * Optional cheaper first pass, e.g. claude-haiku-5-5. Its reading is kept only when the passport's check digits
+   * prove it right; otherwise EXTRACT_MODEL reads the page. Empty (the default) means EXTRACT_MODEL only.
+   */
+  EXTRACT_FAST_MODEL: z.string().default(''),
+  /** Spending guard. Automatic reading pauses (people type their details) once this month's model spend reaches it. 0 = no cap. */
+  AI_MONTHLY_BUDGET_USD: z.coerce.number().min(0).default(50),
+  /** Most model calls one application can trigger, so repeated uploads cannot run up the bill. 0 = no cap. */
+  AI_CALLS_PER_APPLICATION: z.coerce.number().int().min(0).default(6),
 
   /** Prices in AED, before VAT. Set these from your partner's rate card. */
   GOV_FEE_TOURIST_30: z.coerce.number().default(252),
@@ -90,7 +116,10 @@ export function assertProductionReady(c: Config) {
   if (c.AUTH_SECRET.startsWith('dev-only') || c.AUTH_SECRET.length < 32) problems.push('AUTH_SECRET must be a random string of 32+ characters');
   if (!c.DATABASE_URL) problems.push('DATABASE_URL must point at Postgres');
   if (c.STORAGE_DRIVER !== 's3') problems.push('STORAGE_DRIVER must be s3');
-  if (c.MAIL_DRIVER !== 'resend') problems.push('MAIL_DRIVER must be resend');
+  if (c.MAIL_DRIVER === 'console') problems.push('MAIL_DRIVER must be ses or resend');
+  if (c.MAIL_DRIVER === 'resend' && !c.RESEND_API_KEY) problems.push('RESEND_API_KEY is missing');
+  if (c.MAIL_DRIVER === 'ses' && !(c.SES_REGION || c.AWS_REGION)) problems.push('SES_REGION is missing');
+  if (c.MAIL_DRIVER === 'ses' && !(c.SES_ACCESS_KEY_ID || c.AWS_ACCESS_KEY_ID)) problems.push('SES credentials are missing (set SES_ACCESS_KEY_ID and SES_SECRET_ACCESS_KEY outside AWS)');
   if (c.PAYMENTS_DRIVER !== 'stripe') problems.push('PAYMENTS_DRIVER must be stripe');
   if (c.FILING_PROVIDER === 'sandbox') problems.push('FILING_PROVIDER cannot be sandbox');
   if (c.PAYMENTS_DRIVER === 'stripe' && (!c.STRIPE_SECRET_KEY || !c.STRIPE_WEBHOOK_SECRET)) problems.push('Stripe keys are missing');

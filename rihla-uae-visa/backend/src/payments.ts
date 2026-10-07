@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
 import type { Config } from './config';
 
 /*
@@ -61,10 +61,13 @@ export function createPayments(c: Config): Payments {
 }
 
 function stripePayments(c: Config): Payments {
-  const stripe = new Stripe(c.STRIPE_SECRET_KEY);
+  // Loaded on first use, so requests that never touch payments do not pay for the SDK at start-up.
+  let client: Promise<Stripe> | null = null;
+  const sdk = () => (client ??= import('stripe').then((m) => new m.default(c.STRIPE_SECRET_KEY, { maxNetworkRetries: 2, timeout: 20_000 })));
   return {
     driver: 'stripe',
     async createCheckout(i) {
+      const stripe = await sdk();
       const q = i.quote;
       const line = (name: string, amount: number) => ({ quantity: 1, price_data: { currency: 'aed', unit_amount: fils(amount), product_data: { name } } });
       const session = await stripe.checkout.sessions.create({
@@ -83,6 +86,7 @@ function stripePayments(c: Config): Payments {
     },
     async parseWebhook(rawBody, signature) {
       if (!signature) throw new Error('Missing Stripe signature');
+      const stripe = await sdk();
       const event = await stripe.webhooks.constructEventAsync(rawBody, signature, c.STRIPE_WEBHOOK_SECRET);
       if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
         const s = event.data.object;
@@ -93,6 +97,7 @@ function stripePayments(c: Config): Payments {
       return { eventId: event.id, kind: 'ignored' };
     },
     async refund(sessionId) {
+      const stripe = await sdk();
       const s = await stripe.checkout.sessions.retrieve(sessionId);
       const pi = typeof s.payment_intent === 'string' ? s.payment_intent : s.payment_intent?.id;
       if (pi) await stripe.refunds.create({ payment_intent: pi });

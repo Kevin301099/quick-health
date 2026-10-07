@@ -8,12 +8,14 @@ import { HttpError } from './errors';
 
 /*
   Passwordless sign-in: a six-digit code by email, then a signed session token.
-  Codes are stored hashed, expire in 10 minutes, allow 5 attempts, and at most 3 can be requested per 10 minutes.
+  Codes are stored hashed, expire in 10 minutes, allow 5 attempts, and at most 3 can be requested per 10 minutes
+  for one address (12 an hour from one network).
 */
 
 const CODE_TTL_MIN = 10;
 const MAX_ATTEMPTS = 5;
 const MAX_CODES_PER_WINDOW = 3;
+const MAX_CODES_PER_IP_HOUR = 12;
 const SESSION_DAYS = 7;
 
 export interface SessionUser {
@@ -26,12 +28,21 @@ const hashCode = (secret: string, email: string, code: string) => createHmac('sh
 
 export const normEmail = (e: string) => e.trim().toLowerCase();
 
-export async function requestCode(d: Deps, rawEmail: string) {
+export async function requestCode(d: Deps, rawEmail: string, ip = '') {
   const email = normEmail(rawEmail);
-  const recent = await d.db.query<{ n: string }>(`SELECT count(*)::text AS n FROM login_codes WHERE email = $1 AND created_at > now() - interval '${CODE_TTL_MIN} minutes'`, [email]);
-  if (Number(recent[0]?.n ?? 0) >= MAX_CODES_PER_WINDOW) throw new HttpError(429, 'too_many_codes', 'Too many codes requested. Wait a few minutes and try again.');
+  // Limits live in the database, so they hold across every serverless instance. The per-address limit stops
+  // one inbox being flooded; the per-network limit stops one sender mailing many addresses (each email costs money
+  // and sending reputation). Addresses are stored as keyed hashes, never in the clear.
+  const ipHash = ip ? createHmac('sha256', d.config.AUTH_SECRET).update(`ip:${ip}`).digest('hex').slice(0, 32) : null;
+  const [recent] = await d.db.query<{ email_n: string; ip_n: string }>(
+    `SELECT (SELECT count(*) FROM login_codes WHERE email = $1 AND created_at > now() - interval '${CODE_TTL_MIN} minutes')::text AS email_n,
+            (SELECT count(*) FROM login_codes WHERE $2::text IS NOT NULL AND ip_hash = $2 AND created_at > now() - interval '1 hour')::text AS ip_n`,
+    [email, ipHash],
+  );
+  if (Number(recent?.email_n ?? 0) >= MAX_CODES_PER_WINDOW) throw new HttpError(429, 'too_many_codes', 'Too many codes requested. Wait a few minutes and try again.');
+  if (Number(recent?.ip_n ?? 0) >= MAX_CODES_PER_IP_HOUR) throw new HttpError(429, 'too_many_codes', 'Too many sign-in codes from this network. Try again in an hour.');
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  await d.db.query(`INSERT INTO login_codes (id, email, code_hash, expires_at) VALUES ($1, $2, $3, now() + interval '${CODE_TTL_MIN} minutes')`, [randomUUID(), email, hashCode(d.config.AUTH_SECRET, email, code)]);
+  await d.db.query(`INSERT INTO login_codes (id, email, code_hash, expires_at, ip_hash) VALUES ($1, $2, $3, now() + interval '${CODE_TTL_MIN} minutes', $4)`, [randomUUID(), email, hashCode(d.config.AUTH_SECRET, email, code), ipHash]);
   await d.mailer.send({ to: email, ...templates.loginCode(code) });
 }
 

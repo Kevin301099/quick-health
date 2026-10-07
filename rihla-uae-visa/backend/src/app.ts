@@ -53,14 +53,21 @@ function limiter(max: number, windowMs: number) {
 export function buildApp(d: Deps) {
   const app = new Hono<Env>();
   const authLimit = limiter(20, 60_000);
-  const ip = (c: { req: { header: (n: string) => string | undefined } }) => c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
+  // The caller's address: from Lambda's own request context when serverless (it cannot be spoofed by a header),
+  // otherwise from the proxy in front of the server.
+  const ip = (c: { env?: unknown; req: { header: (n: string) => string | undefined } }) =>
+    (c.env as { requestContext?: { http?: { sourceIp?: string } } } | undefined)?.requestContext?.http?.sourceIp ??
+    c.req.header('cf-connecting-ip') ??
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'local';
 
   app.use('*', secureHeaders({ crossOriginResourcePolicy: 'cross-origin' }));
   app.use(
     '/v1/*',
     cors({
       origin: d.config.CORS_ORIGINS.split(',').map((o) => o.trim()),
-      allowHeaders: ['authorization', 'content-type'],
+      allowHeaders: ['authorization', 'content-type', 'if-none-match'],
+      exposeHeaders: ['etag'],
       allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'OPTIONS'],
       maxAge: 600,
     }),
@@ -115,7 +122,7 @@ export function buildApp(d: Deps) {
   app.post('/v1/auth/code', async (c) => {
     authLimit(`code:${ip(c)}`);
     const { email } = await json(c, z.object({ email: z.string().email('Enter a valid email address') }));
-    await requestCode(d, email);
+    await requestCode(d, email, ip(c));
     return c.json({ ok: true });
   });
 
@@ -146,6 +153,14 @@ export function buildApp(d: Deps) {
 
   app.get('/v1/applications/:id', async (c) => {
     const a = await ownApp(d, currentUser(c).id, c.req.param('id'));
+    // The status page polls this. A poll that sends back the tag it last saw gets an empty 304 while nothing has
+    // changed, which skips the document, event and readiness queries. The tag also rolls over every 4 minutes,
+    // so the short-lived file links in the full response are refreshed before they expire.
+    const [v] = await d.db.query<{ ev: string }>('SELECT coalesce(max(id), 0)::text AS ev FROM events WHERE application_id = $1', [a.id]);
+    const tag = `W/"${Date.parse(a.updated_at).toString(36)}.${v.ev}.${Math.floor(Date.now() / 240_000).toString(36)}"`;
+    c.header('etag', tag);
+    c.header('cache-control', 'private, no-cache');
+    if (c.req.header('if-none-match') === tag) return c.body(null, 304);
     return c.json({ application: await publicApp(d, a, { withFiles: true }) });
   });
 
@@ -327,6 +342,29 @@ export function buildApp(d: Deps) {
     await d.db.query(`UPDATE applications SET status = 'cancelled', payment = jsonb_set(payment, '{status}', '"refunded"'), updated_at = now() WHERE id = $1`, [a.id]);
     await logEvent(d, a.id, 'ops', 'refunded', { by: u.email });
     return c.json({ ok: true });
+  });
+
+  /** What passport reading has cost: this month against the budget, and today. */
+  app.get('/v1/ops/usage', async (c) => {
+    opsUser(c);
+    const [row] = await d.db.query<{ m_calls: string; m_usd: string; d_calls: string; d_usd: string; m_apps: string }>(
+      `SELECT count(*) FILTER (WHERE created_at >= date_trunc('month', now()))::text AS m_calls,
+              coalesce(sum(cost_usd) FILTER (WHERE created_at >= date_trunc('month', now())), 0)::text AS m_usd,
+              count(*) FILTER (WHERE created_at >= date_trunc('day', now()))::text AS d_calls,
+              coalesce(sum(cost_usd) FILTER (WHERE created_at >= date_trunc('day', now())), 0)::text AS d_usd,
+              count(DISTINCT application_id) FILTER (WHERE created_at >= date_trunc('month', now()))::text AS m_apps
+         FROM ai_usage WHERE created_at >= date_trunc('month', now())`,
+    );
+    const byModel = await d.db.query<{ model: string; calls: string; usd: string }>(
+      `SELECT model, count(*)::text AS calls, sum(cost_usd)::text AS usd FROM ai_usage WHERE created_at >= date_trunc('month', now()) GROUP BY model ORDER BY sum(cost_usd) DESC`,
+    );
+    const monthUsd = Number(row.m_usd);
+    return c.json({
+      month: { calls: Number(row.m_calls), costUsd: monthUsd, budgetUsd: d.config.AI_MONTHLY_BUDGET_USD, applications: Number(row.m_apps), perApplicationUsd: Number(row.m_apps) ? monthUsd / Number(row.m_apps) : 0 },
+      today: { calls: Number(row.d_calls), costUsd: Number(row.d_usd) },
+      byModel: byModel.map((m) => ({ model: m.model, calls: Number(m.calls), costUsd: Number(m.usd) })),
+      models: { main: d.config.EXTRACT_MODEL, fast: d.config.EXTRACT_FAST_MODEL || null },
+    });
   });
 
   /* ---------------------------------------------------------------- scheduler */

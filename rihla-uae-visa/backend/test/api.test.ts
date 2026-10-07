@@ -2,47 +2,7 @@ import { describe, expect, it } from 'vitest';
 import Stripe from 'stripe';
 import { tick } from '../src/jobs';
 import { daysFromNow, fakeExtractor, makeDeps, png } from './helpers';
-
-type App = Awaited<ReturnType<typeof makeDeps>>['app'];
-type Deps = Awaited<ReturnType<typeof makeDeps>>['deps'];
-
-async function call(app: App, method: string, path: string, opts: { token?: string; body?: unknown; raw?: BodyInit; headers?: Record<string, string> } = {}) {
-  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
-  if (opts.token) headers.authorization = `Bearer ${opts.token}`;
-  if (opts.body !== undefined) headers['content-type'] = 'application/json';
-  const res = await app.request(path, { method, headers, body: opts.raw ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined) });
-  const text = await res.text();
-  let json: any = null;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    /* not json */
-  }
-  return { status: res.status, json, text, res };
-}
-
-async function signIn(app: App, deps: Deps, email: string) {
-  expect((await call(app, 'POST', '/v1/auth/code', { body: { email } })).status).toBe(200);
-  const mail = deps.mailer.outbox.filter((m) => m.to === email).at(-1)!;
-  const code = mail.subject.slice(0, 6);
-  const r = await call(app, 'POST', '/v1/auth/verify', { body: { email, code } });
-  expect(r.status).toBe(200);
-  return r.json.token as string;
-}
-
-const answers = () => ({ nationality: 'IN', hasPermit: false, days: 30, arrival: daysFromNow(20), departure: daysFromNow(34), emirate: 'Dubai' });
-
-async function upload(app: App, token: string, appId: string, slot: string, mime: string, bytes: Uint8Array) {
-  const start = await call(app, 'POST', `/v1/applications/${appId}/documents`, { token, body: { slot, mime, bytes: bytes.byteLength } });
-  expect(start.status).toBe(201);
-  const url = new URL(start.json.upload.url);
-  const put = await app.request(url.pathname + url.search, { method: 'PUT', headers: { 'content-type': mime }, body: new Uint8Array(bytes) });
-  expect(put.status).toBe(200);
-  return call(app, 'POST', `/v1/applications/${appId}/documents/${start.json.documentId}/complete`, { token });
-}
-
-const goodPhoto = { width: 900, height: 1150, bytes: 300_000, aspect: 0.78, bgLuma: 0.92, bgSpread: 0.05, checks: [{ id: 'background', label: 'Background', ok: true, value: 'light' }], needsFix: false, needsResize: false, blocking: false };
-const declarations = { refused_before: false, deported: false, criminal: false, truthful: true, authorise: true };
+import { answers, call, declarations, goodPhoto, signIn, upload, type App, type Deps } from './flow';
 
 /** Takes an application from nothing to signed and paid. */
 async function paidApplication(app: App, deps: Deps, token: string) {
@@ -95,13 +55,14 @@ describe('a tourist visa, start to finish (sandbox filer)', () => {
     const token = await signIn(app, deps, 'ananya@example.com');
     const id = await paidApplication(app, deps, token);
 
+    // Filed the moment payment landed, without waiting for a scheduled run.
     let view = await call(app, 'GET', `/v1/applications/${id}`, { token });
-    expect(view.json.application.status).toBe('paid');
+    expect(view.json.application.status).toBe('submitted');
+    expect(view.json.application.providerRef).toMatch(/^SBX-/);
     expect(deps.mailer.outbox.some((m) => m.subject.startsWith('Payment received'))).toBe(true);
 
-    await tick(deps); // files it, and the test sandbox approves on the same run
+    await tick(deps); // the test sandbox approves on the first poll
     view = await call(app, 'GET', `/v1/applications/${id}`, { token });
-    expect(view.json.application.providerRef).toMatch(/^SBX-/);
     expect(view.json.application.events.map((e: { type: string }) => e.type)).toEqual(expect.arrayContaining(['filed', 'status_submitted', 'status_approved']));
     expect(view.json.application.status).toBe('approved');
     expect(view.json.application.permit.available).toBe(true);
@@ -214,7 +175,8 @@ describe('Stripe webhooks', () => {
     const again = await call(app, 'POST', '/v1/webhooks/stripe', { raw: payload, headers: { 'stripe-signature': header, 'content-type': 'application/json' } });
     expect(again.status).toBe(200);
     const view = await call(app, 'GET', `/v1/applications/${id}`, { token });
-    expect(view.json.application.status).toBe('paid');
+    expect(view.json.application.status).toBe('submitted');
     expect(view.json.application.events.filter((e: { type: string }) => e.type === 'paid')).toHaveLength(1);
+    expect(view.json.application.events.filter((e: { type: string }) => e.type === 'filed')).toHaveLength(1);
   });
 });

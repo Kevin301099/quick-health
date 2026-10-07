@@ -150,13 +150,15 @@ function partnerHttpProvider(c: Config): FilingProvider {
     name: 'partner_http',
     automatic: true,
     async submit(p) {
-      const r = await fetch(`${base}/applications`, { method: 'POST', headers, body: JSON.stringify(toPartner(p)) });
+      // The idempotency key lets the partner ignore a repeat if we retry after a timeout. The short timeout keeps
+      // filing inside the payment webhook's window; a slow partner is simply retried by the scheduled run.
+      const r = await fetch(`${base}/applications`, { method: 'POST', headers: { ...headers, 'idempotency-key': p.applicationId }, body: JSON.stringify(toPartner(p)), signal: AbortSignal.timeout(15_000) });
       if (!r.ok) throw new Error(`Partner rejected the submission: ${r.status} ${await r.text()}`);
       const body = (await r.json()) as { reference: string; status?: string; message?: string };
       return { ref: body.reference, update: fromPartner(body) };
     },
     async poll(ref) {
-      const r = await fetch(`${base}/applications/${encodeURIComponent(ref)}`, { headers });
+      const r = await fetch(`${base}/applications/${encodeURIComponent(ref)}`, { headers, signal: AbortSignal.timeout(20_000) });
       if (!r.ok) throw new Error(`Partner status failed: ${r.status}`);
       return fromPartner(await r.json());
     },

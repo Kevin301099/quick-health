@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowRight, Check, CreditCard, Download, FileText, Lock, PenLine, ScanLine, TriangleAlert, Upload, Wand2 } from 'lucide-react';
 import { SLOTS } from '@/domain/visas';
 import type { DocSlotId, Profile } from '@/domain/types';
-import { analysePhoto, lightenBackground, type PhotoReport } from '@/domain/photo';
+import { analysePhoto, lightenBackground, shrinkDocument, type PhotoReport } from '@/domain/photo';
 import { aed, cn, fmtDate, formatBytes } from '@/lib/utils';
 import { Pill, Spinner } from '@/components/ui';
 import { ChecksReport, Checklist, PermitReady, StatusTimeline } from '@/components/cards/results';
@@ -270,13 +270,15 @@ function Slot({ slot, doc, app, setApp, onExtraction, max }: { slot: DocSlotId; 
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
 
-  const send = async (file: File | Blob) => {
+  const send = async (picked: File | Blob) => {
     setError(null);
-    const type = file.type === 'image/jpg' ? 'image/jpeg' : file.type;
+    const type = picked.type === 'image/jpg' ? 'image/jpeg' : picked.type;
     if (!['image/jpeg', 'image/png', 'application/pdf'].includes(type) || (slot === 'photo' && type === 'application/pdf')) {
       setError(slot === 'photo' ? 'The photo must be a JPEG or PNG image.' : 'Upload a JPEG, PNG or PDF.');
       return;
     }
+    // Document photos are shrunk in the browser first; the visa photo keeps its pixels for the photo checks.
+    const file = slot === 'photo' ? picked : await shrinkDocument(type === picked.type ? picked : new Blob([picked], { type }));
     if (file.size > max) {
       setError(`This file is ${formatBytes(file.size)}. Files can be up to ${formatBytes(max)}.`);
       return;

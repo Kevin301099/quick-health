@@ -1,0 +1,8 @@
+# The build context is the rihla-uae-visa folder; send only what the API build needs.
+**/node_modules
+**/.env
+backend/dist
+backend/data
+.next
+out
+public

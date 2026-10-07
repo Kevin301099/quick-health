@@ -1,16 +1,18 @@
 import type { Deps } from './deps';
-import { applyUpdate, logEvent, submitToProvider, type AppRow } from './applications';
+import { applyUpdate, logEvent, submitToProvider, UNFILED, type AppRow } from './applications';
 
 /*
-  Background work, run every few seconds in-process or by an external scheduler hitting /internal/tick.
-  Each step is idempotent, so overlapping or repeated runs are harmless.
+  Background work: retry filings that failed at payment time, ask an automatic partner for news, and delete
+  old documents. Run in-process, by a scheduler invoking the Lambda function, or by a cron hitting /internal/tick.
+  Filing itself happens the moment payment lands, so this can run rarely: every 10 minutes with a partner API,
+  hourly with manual filing. Each step is idempotent, so overlapping or repeated runs are harmless.
 */
 
 export async function tick(d: Deps) {
   const out = { submitted: 0, polled: 0, purged: 0, errors: 0 };
 
-  // 1. File everything that has been paid for.
-  const paid = await d.db.query<AppRow>(`SELECT * FROM applications WHERE status = 'paid' AND provider_ref IS NULL ORDER BY paid_at LIMIT 20`);
+  // 1. File anything paid for that did not get filed at payment time.
+  const paid = await d.db.query<AppRow>(`SELECT * FROM applications WHERE ${UNFILED} ORDER BY paid_at LIMIT 20`);
   for (const a of paid) {
     try {
       await submitToProvider(d, a);

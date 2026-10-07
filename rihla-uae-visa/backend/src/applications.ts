@@ -6,6 +6,7 @@ import { quoteFor, type Quote } from './payments';
 import type { FilingPacket, FilingUpdate } from './providers';
 import { imageSize, sniffMime } from './images';
 import { templates } from './mail';
+import { unavailable, type Extraction } from './extract';
 import { checkEligibility, NATIONALITIES } from '@/domain/nationalities';
 import { runChecks } from '@/domain/checks';
 import { similarity } from '@/domain/checks';
@@ -317,14 +318,7 @@ export async function completeUpload(d: Deps, a: AppRow, documentId: string) {
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const size = real === 'application/pdf' ? null : imageSize(bytes);
 
-  let extraction: Awaited<ReturnType<Deps['extractor']['passport']>> | null = null;
-  if (doc.slot === 'passport') {
-    const cached = await d.db.query<{ result: typeof extraction }>('SELECT result FROM extraction_cache WHERE sha256 = $1', [sha256]);
-    extraction = cached[0]?.result ?? (await d.extractor.passport(bytes, real));
-    if (!cached[0] && extraction && extraction.model) {
-      await d.db.query('INSERT INTO extraction_cache (sha256, result, model) VALUES ($1, $2::jsonb, $3) ON CONFLICT DO NOTHING', [sha256, j(extraction), extraction.model]);
-    }
-  }
+  const extraction = doc.slot === 'passport' ? await readPassport(d, a, bytes, real, sha256) : null;
 
   await d.db.query(`UPDATE documents SET status = 'uploaded', sha256 = $2, bytes = $3, width = $4, height = $5, extracted = $6::jsonb WHERE id = $1`, [
     doc.id,
@@ -357,6 +351,42 @@ export async function completeUpload(d: Deps, a: AppRow, documentId: string) {
   const next = { ...app };
   app = await setFields(d, a.id, { checks: computeChecks(d, next) });
   return { document: publicDoc({ ...doc, status: 'uploaded', sha256, bytes: bytes.byteLength, width: size?.width ?? null, height: size?.height ?? null, extracted: extraction }), extraction, application: app };
+}
+
+/**
+ * Reads a passport at most once per unique file, and only within the spending limits: a cap on model calls per
+ * application (so repeated uploads cannot run up the bill) and a monthly budget for the whole service.
+ * Over a limit, the person types their details instead; nothing else in the application changes.
+ */
+async function readPassport(d: Deps, a: AppRow, bytes: Uint8Array, mime: string, sha256: string): Promise<Extraction> {
+  const cached = await d.db.query<{ result: Extraction }>('SELECT result FROM extraction_cache WHERE sha256 = $1', [sha256]);
+  if (cached[0]) return cached[0].result;
+  const [spent] = await d.db.query<{ app_calls: string; month_usd: string }>(
+    `SELECT (SELECT count(*) FROM ai_usage WHERE application_id = $1)::text AS app_calls,
+            (SELECT coalesce(sum(cost_usd), 0) FROM ai_usage WHERE created_at >= date_trunc('month', now()))::text AS month_usd`,
+    [a.id],
+  );
+  const { AI_CALLS_PER_APPLICATION: perApp, AI_MONTHLY_BUDGET_USD: budget } = d.config;
+  if (perApp > 0 && Number(spent.app_calls) >= perApp) return unavailable('We have read several passport files for this application already. Please type your details.');
+  if (budget > 0 && Number(spent.month_usd) >= budget) {
+    console.warn(`[extract] monthly reading budget of $${budget} reached; people type their details until it is raised or the month ends`);
+    return unavailable('Automatic reading is paused right now. Please type your passport details.');
+  }
+  const { extraction, calls } = await d.extractor.passport(bytes, mime);
+  for (const call of calls) {
+    await d.db.query(`INSERT INTO ai_usage (application_id, purpose, model, input_tokens, output_tokens, cost_usd, outcome) VALUES ($1, 'passport', $2, $3, $4, $5, $6)`, [
+      a.id,
+      call.model,
+      call.inputTokens,
+      call.outputTokens,
+      call.costUsd,
+      call.outcome,
+    ]);
+  }
+  if (calls.length && extraction.model) {
+    await d.db.query('INSERT INTO extraction_cache (sha256, result, model) VALUES ($1, $2::jsonb, $3) ON CONFLICT DO NOTHING', [sha256, j(extraction), extraction.model]);
+  }
+  return extraction;
 }
 
 /** Three-letter codes used on passports for the nationalities the app knows. */
@@ -414,7 +444,15 @@ export async function markPaid(d: Deps, applicationId: string, sessionId: string
   const updated = await setFields(d, a.id, { status: 'paid', paid_at: d.now().toISOString(), payment: { driver: d.payments.driver, sessionId, status: 'paid', amount } });
   await logEvent(d, a.id, 'you', 'paid', { amount });
   await notify(d, updated, 'paid');
-  return updated;
+  // File straight away rather than on the next scheduled run, so the scheduler can run rarely (or the database
+  // can sleep). If filing fails here, the scheduled run retries it.
+  try {
+    return await submitToProvider(d, updated);
+  } catch (e) {
+    console.error('[filing] submit after payment failed', a.id, e);
+    await logEvent(d, a.id, 'system', 'filing_error', { message: String(e).slice(0, 300) });
+    return updated;
+  }
 }
 
 /* ------------------------------------------------------------------ filing */
@@ -448,13 +486,23 @@ export async function packetFor(d: Deps, a: AppRow): Promise<FilingPacket> {
   };
 }
 
+/** Applications that are paid but not filed, and not being filed by someone else right now. */
+export const UNFILED = `status = 'paid' AND provider_ref IS NULL AND (claimed_at IS NULL OR claimed_at < now() - interval '10 minutes')`;
+
 export async function submitToProvider(d: Deps, a: AppRow) {
   if (a.status !== 'paid' || a.provider_ref) return a;
-  const packet = await packetFor(d, a);
-  const { ref, update } = await d.provider.submit(packet);
-  const updated = await setFields(d, a.id, { provider: d.provider.name, provider_ref: ref, submitted_at: d.now().toISOString() });
-  await logEvent(d, a.id, d.provider.name === 'manual' ? 'agent' : 'agent', 'filed', { provider: d.provider.name, ref });
-  return applyUpdate(d, updated, update, d.provider.name === 'manual' ? 'agent' : 'partner');
+  // Claim it first, so the payment webhook and a scheduled run (or two instances) never file it twice.
+  const [claimed] = await d.db.query<AppRow>(`UPDATE applications SET claimed_at = now() WHERE id = $1 AND ${UNFILED} RETURNING *`, [a.id]);
+  if (!claimed) return a;
+  try {
+    const { ref, update } = await d.provider.submit(await packetFor(d, claimed));
+    const updated = await setFields(d, a.id, { provider: d.provider.name, provider_ref: ref, submitted_at: d.now().toISOString() });
+    await logEvent(d, a.id, 'agent', 'filed', { provider: d.provider.name, ref });
+    return applyUpdate(d, updated, update, d.provider.name === 'manual' ? 'agent' : 'partner');
+  } catch (e) {
+    await d.db.query('UPDATE applications SET claimed_at = NULL WHERE id = $1', [a.id]);
+    throw e;
+  }
 }
 
 /** Moves an application to the state a provider (or ops) reports. Safe to call with the same update twice. */
@@ -470,7 +518,7 @@ export async function applyUpdate(d: Deps, a: AppRow, u: FilingUpdate, actor: 'p
       key = `applications/${a.id}/permit-${u.permit.number.replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
       await d.storage.put(key, u.permit.file.bytes, u.permit.file.mime);
     } else if (u.permit.url) {
-      const r = await fetch(u.permit.url);
+      const r = await fetch(u.permit.url, { signal: AbortSignal.timeout(30_000) });
       if (!r.ok) throw new Error(`Could not fetch the permit: ${r.status}`);
       key = `applications/${a.id}/permit-${u.permit.number.replace(/[^A-Za-z0-9-]/g, '')}.pdf`;
       await d.storage.put(key, new Uint8Array(await r.arrayBuffer()), 'application/pdf');

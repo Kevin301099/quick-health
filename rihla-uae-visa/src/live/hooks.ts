@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError, session, type LiveApplication, type LiveConfig } from './api';
+import { api, ApiError, getIfChanged, session, type LiveApplication, type LiveConfig } from './api';
 
 export interface Me {
   id: string;
@@ -47,40 +47,78 @@ export function useLiveConfig() {
 }
 
 const MOVING = new Set(['paid', 'queued', 'submitted', 'processing']);
+const FIRST_WAIT = 3000;
 
-/** Loads one application and keeps it fresh while it is moving through filing. */
+/**
+ * Loads one application and keeps it fresh while it is moving through filing. Polls quickly right after a change,
+ * then backs off (up to a minute, or two while waiting on the traveller), pauses while the tab is hidden, and asks
+ * the API for changes only, so an unchanged poll is an empty response.
+ */
 export function useApplication(id: string, keepPolling?: (a: LiveApplication) => boolean) {
   const [app, setApp] = useState<LiveApplication | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const timer = useRef<number | null>(null);
+  const etag = useRef<string | null>(null);
+  const latest = useRef<LiveApplication | null>(null);
+  const keep = useRef(keepPolling);
+  keep.current = keepPolling;
 
-  const load = useCallback(async () => {
+  const fetchApp = useCallback(async (): Promise<{ app: LiveApplication | null; changed: boolean }> => {
     try {
-      const r = await api<{ application: LiveApplication }>(`/v1/applications/${id}`);
-      setApp(r.application);
+      const r = await getIfChanged<{ application: LiveApplication }>(`/v1/applications/${id}`, latest.current ? etag.current : null);
       setError(null);
-      return r.application;
+      if (!r.changed) return { app: latest.current, changed: false };
+      etag.current = r.etag;
+      latest.current = r.data.application;
+      setApp(r.data.application);
+      return { app: r.data.application, changed: true };
     } catch (e) {
       setError(e as ApiError);
-      return null;
+      return { app: latest.current, changed: false };
     }
   }, [id]);
 
   useEffect(() => {
     let alive = true;
-    const loop = async () => {
-      const a = await load();
-      if (!alive) return;
-      // Poll quickly while something is happening, slowly otherwise, and not at all once decided.
-      const wait = a && (MOVING.has(a.status) || keepPolling?.(a)) ? 4000 : a && a.status === 'needs_info' ? 15000 : 0;
-      if (wait) timer.current = window.setTimeout(loop, document.hidden ? wait * 4 : wait);
+    let wait = FIRST_WAIT;
+    const stop = () => {
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = null;
     };
+    const loop = async () => {
+      stop();
+      if (document.hidden) return; // picks up again when the tab is visible
+      const { app: a, changed } = await fetchApp();
+      if (!alive || !a) return;
+      const moving = MOVING.has(a.status) || !!keep.current?.(a);
+      if (!moving && a.status !== 'needs_info') return; // nothing will change without the traveller
+      wait = changed ? FIRST_WAIT : Math.min(wait * 1.6, moving ? 60_000 : 120_000);
+      timer.current = window.setTimeout(loop, wait);
+    };
+    const onVisible = () => {
+      if (document.hidden || !alive) return;
+      wait = FIRST_WAIT;
+      void loop();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     void loop();
     return () => {
       alive = false;
-      if (timer.current) window.clearTimeout(timer.current);
+      stop();
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [load]);
+  }, [fetchApp]);
 
-  return { app, setApp, error, reload: load };
+  // Local edits (uploads, saves) replace the copy here; the next poll fetches in full because the tag changed.
+  const set = useCallback((a: LiveApplication | ((prev: LiveApplication | null) => LiveApplication | null)) => {
+    setApp((prev) => {
+      const next = typeof a === 'function' ? a(prev) : a;
+      latest.current = next;
+      return next;
+    });
+  }, []);
+
+  const reload = useCallback(async () => (await fetchApp()).app, [fetchApp]);
+
+  return { app, setApp: set, error, reload };
 }

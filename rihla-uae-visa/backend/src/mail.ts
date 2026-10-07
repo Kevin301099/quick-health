@@ -1,8 +1,12 @@
+import { AwsClient } from 'aws4fetch';
 import type { Config } from './config';
 
 /*
-  Email is the one channel every applicant has. Resend is cheap and simple; the console driver prints
-  messages during development (and tests read them back from `outbox`).
+  Email is the one channel every applicant has.
+  - ses: Amazon SES, billed per message (about $0.10 per 1,000) with no monthly plan. On Lambda it uses the
+    function's own role, so there is no key to manage.
+  - resend: the simplest to set up; its free tier is small and paid use is a monthly plan.
+  - console: prints messages during development (and tests read them back from `outbox`).
 */
 
 export interface Mail {
@@ -18,6 +22,33 @@ export interface Mailer {
 }
 
 export function createMailer(c: Config): Mailer {
+  if (c.MAIL_DRIVER === 'ses') {
+    const region = c.SES_REGION || c.AWS_REGION;
+    const own = !!c.SES_ACCESS_KEY_ID;
+    const aws = new AwsClient({
+      accessKeyId: own ? c.SES_ACCESS_KEY_ID : c.AWS_ACCESS_KEY_ID,
+      secretAccessKey: own ? c.SES_SECRET_ACCESS_KEY : c.AWS_SECRET_ACCESS_KEY,
+      sessionToken: own ? undefined : c.AWS_SESSION_TOKEN || undefined,
+      service: 'ses',
+      region,
+      retries: 2,
+    });
+    return {
+      outbox: [],
+      async send(m) {
+        const r = await aws.fetch(`https://email.${region}.amazonaws.com/v2/email/outbound-emails`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            FromEmailAddress: c.MAIL_FROM,
+            Destination: { ToAddresses: [m.to] },
+            Content: { Simple: { Subject: { Data: m.subject, Charset: 'UTF-8' }, Body: { Text: { Data: m.text, Charset: 'UTF-8' } } } },
+          }),
+        });
+        if (!r.ok) throw new Error(`Email failed: ${r.status} ${await r.text()}`);
+      },
+    };
+  }
   if (c.MAIL_DRIVER === 'resend') {
     return {
       outbox: [],

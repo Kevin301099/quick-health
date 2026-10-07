@@ -172,6 +172,32 @@ export async function shrinkForPortal(blob: Blob, targetWidth = 600, maxBytes = 
   return out;
 }
 
+/**
+ * Shrinks a document photo (passport page, ticket, booking) before upload. A 2,000-pixel long edge is still
+ * sharper than a 300 dpi scan of a passport page, at a fraction of a phone photo's 4 to 12 MB: uploads finish
+ * sooner, storage costs less, and the passport reader gets a lighter file. PDFs and small images pass through.
+ */
+export async function shrinkDocument(blob: Blob, maxEdge = 2000, quality = 0.88): Promise<Blob> {
+  if (blob.type !== 'image/jpeg' && blob.type !== 'image/png') return blob;
+  let bmp: ImageBitmap | HTMLImageElement;
+  try {
+    bmp = typeof createImageBitmap === 'function' ? await createImageBitmap(blob, { imageOrientation: 'from-image' }) : await bitmapOf(blob);
+  } catch {
+    return blob; // the server will report a broken file properly
+  }
+  const { w, h } = sizeOf(bmp);
+  const scale = Math.min(1, maxEdge / Math.max(w, h));
+  if (scale === 1 && blob.size <= 1.5 * 1024 * 1024) return blob;
+  const c = canvasOf(Math.round(w * scale), Math.round(h * scale));
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  ctx.fillStyle = '#fff'; // transparent PNG areas become white, not black, in a JPEG
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  const out = await toBlob(c, quality);
+  return out.size < blob.size ? out : blob;
+}
+
 export interface SamplePhotoOpts {
   background: 'grey' | 'white';
   skin: string;

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,9 +13,25 @@ import { buildApp } from '../src/app';
 import type { Deps } from '../src/deps';
 import type { Extraction, Extractor } from '../src/extract';
 
+/**
+ * Tests run on PGlite (embedded Postgres) by default. Set TEST_DATABASE_URL to run the same tests on a real
+ * Postgres server, which is what production uses; each test gets its own schema there.
+ */
+async function testDatabaseUrl() {
+  const url = process.env.TEST_DATABASE_URL;
+  if (!url) return '';
+  const schema = `t_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  const { default: pg } = await import('pg');
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  await client.query(`CREATE SCHEMA ${schema}`);
+  await client.end();
+  return `${url}${url.includes('?') ? '&' : '?'}options=${encodeURIComponent(`-c search_path=${schema}`)}`;
+}
+
 export async function makeDeps(env: Record<string, string> = {}, extractor?: Extractor) {
   const dir = mkdtempSync(join(tmpdir(), 'rihla-'));
-  const config = loadConfig({ NODE_ENV: 'test', LOCAL_STORAGE_DIR: join(dir, 'files'), OPS_EMAILS: 'ops@rihla.test', SANDBOX_APPROVE_AFTER_SECONDS: '0', ...env });
+  const config = loadConfig({ NODE_ENV: 'test', LOCAL_STORAGE_DIR: join(dir, 'files'), OPS_EMAILS: 'ops@rihla.test', SANDBOX_APPROVE_AFTER_SECONDS: '0', DATABASE_URL: await testDatabaseUrl(), ...env });
   const deps: Deps = {
     config,
     db: await openDb(config, { memory: true }),
@@ -33,7 +50,7 @@ export function fakeExtractor(result?: Partial<Extraction>): Extractor & { calls
     calls: 0,
     async passport() {
       x.calls++;
-      return {
+      const extraction = {
         status: 'ok',
         verified: true,
         fields: { given: 'ANANYA RAVI', surname: 'SHARMA', passportNo: 'Z9100234', nationality: 'IND', dob: '1992-06-14', sex: 'F', passportIssued: '2019-03-01', passportExpires: '2029-02-28', birthplace: 'PUNE' },
@@ -42,6 +59,7 @@ export function fakeExtractor(result?: Partial<Extraction>): Extractor & { calls
         model: 'fake',
         ...result,
       } as Extraction;
+      return { extraction, calls: [{ model: 'fake', inputTokens: 2500, outputTokens: 600, costUsd: 0.022, outcome: extraction.status }] };
     },
   };
   return x;

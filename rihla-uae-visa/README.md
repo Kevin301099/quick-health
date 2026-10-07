@@ -23,6 +23,8 @@ cd .. && NEXT_PUBLIC_API_URL=http://localhost:8787 npm run dev   # web app on :3
 
 Sign-in codes print in the API console. Payments use a test checkout page, and the sandbox filer approves after 20 seconds. Add yourself to `OPS_EMAILS` to open the ops console at `#ops`.
 
+In production every piece is pay-as-you-go, so the running cost with nobody applying is close to zero: the API runs on AWS Lambda (`backend/deploy/template.yaml`) or as a container (`backend/Dockerfile`), with Neon Postgres, R2 or S3 storage, and SES email. Costs, spending guards and the deploy steps are in [`docs/GO-LIVE.md`](docs/GO-LIVE.md).
+
 ## The demo
 
 1. **Check.** Pick your passport. The app tells you whether you need a visa at all.
@@ -44,7 +46,7 @@ Not done in the demo: reading your own uploaded files (no OCR, so you confirm th
 
 ## Layout
 
-- `backend/`: the API (Hono, TypeScript). Applications, documents, passport reading, payments, filing providers, ops endpoints, background jobs. Tests in `backend/test`.
+- `backend/`: the API (Hono, TypeScript). Applications, documents, passport reading with spending guards, payments, filing providers, ops endpoints, background jobs. Runs as a Node server, a container, or on AWS Lambda (`src/lambda.ts`, `deploy/template.yaml`). Tests in `backend/test` (embedded Postgres by default, or a real one with `TEST_DATABASE_URL`).
 - `src/live`: the live product screens (sign-in, trip, application, payment, tracking, ops console).
 - `src/domain`: visa products and fees, eligibility, sample travellers, cross-checks, photo analysis.
 - `src/agent`: store, engine (human-in-the-loop `ask`, pause, takeover), browser bridge, flows, local answers.
