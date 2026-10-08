@@ -27,7 +27,13 @@ A web app (desktop first) that files **UAE tourist visas** for travellers. It ru
 5. **Pay.** Stripe hosted checkout in AED. The card never reaches Rihla.
 6. **Filed and tracked.** The partner files it (through the ops console or the partner's API). The traveller gets an email at every change and downloads the visa PDF.
 
-Run both halves locally:
+Try everything on your own computer with one command (it installs what is missing, builds the extension, and starts the API, the web app and test forms). Step-by-step checks are in [`docs/TESTING.md`](docs/TESTING.md):
+
+```bash
+npm run try
+```
+
+Or run both halves yourself:
 
 ```bash
 cd backend && npm install && npm run dev            # API on :8787 (embedded database, files on disk, emails in the console)

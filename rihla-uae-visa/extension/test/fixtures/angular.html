@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Visa application — Test replica of a form with picker fields</title>
+<style>
+  body { margin: 0; font: 15px/1.4 Roboto, system-ui, sans-serif; background: #fafafa; color: #212121; }
+  .bar { background: #00594f; color: #fff; padding: 14px 24px; font-weight: 500; }
+  form { max-width: 640px; margin: 24px auto; background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px #0002; display: grid; gap: 18px; }
+  .field { position: relative; display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 12px; color: #00594f; }
+  input { border: 0; border-bottom: 1px solid #9e9e9e; padding: 8px 2px; font: inherit; background: transparent; }
+  .cal { position: absolute; right: 0; bottom: 6px; border: 0; background: none; cursor: pointer; font-size: 16px; }
+  [role=listbox] { position: absolute; top: 100%; left: 0; right: 0; margin: 0; padding: 4px 0; list-style: none; background: #fff; box-shadow: 0 4px 12px #0003; z-index: 2; }
+  [role=option] { padding: 8px 12px; cursor: pointer; }
+  [role=option]:hover { background: #e0f2f1; }
+</style>
+</head>
+<body>
+<div class="bar">Entry permit · Applicant details (test replica)</div>
+<form onsubmit="return false">
+  <div class="field"><label for="given">Given names</label><input id="given" formcontrolname="givenNames"></div>
+  <div class="field"><label for="family">Family name</label><input id="family" formcontrolname="familyName"></div>
+  <div class="field">
+    <label for="nat">Nationality</label>
+    <input id="nat" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="nat-list" formcontrolname="nationality" autocomplete="off">
+    <ul id="nat-list" role="listbox" hidden></ul>
+  </div>
+  <div class="field">
+    <label for="dob">Date of birth</label>
+    <input id="dob" readonly placeholder="DD/MM/YYYY" formcontrolname="dateOfBirth">
+    <button type="button" class="cal" aria-label="Open calendar">📅</button>
+  </div>
+  <div class="field"><label for="ppn">Passport No.</label><input id="ppn" formcontrolname="passportNumber"></div>
+</form>
+<script>
+  // Like an autocomplete widget: typing opens a list; the value only counts once an option is picked.
+  const countries = ['Bangladesh', 'India', 'Indonesia', 'Pakistan', 'Philippines'];
+  const nat = document.getElementById('nat'), list = document.getElementById('nat-list');
+  window.picked = null;
+  nat.addEventListener('input', () => {
+    const q = nat.value.toLowerCase();
+    list.innerHTML = '';
+    for (const c of countries.filter((x) => x.toLowerCase().startsWith(q))) {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.textContent = c;
+      li.onmousedown = () => { nat.value = c; window.picked = c; list.hidden = true; nat.setAttribute('aria-expanded', 'false'); };
+      list.append(li);
+    }
+    list.hidden = !q || !list.children.length;
+    nat.setAttribute('aria-expanded', String(!list.hidden));
+  });
+</script>
+</body>
+</html>

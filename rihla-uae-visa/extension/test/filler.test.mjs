@@ -249,6 +249,26 @@ test('reads Arabic labels', async () => {
   await page.close();
 });
 
+test('marks pick-from-list boxes and calendar-only dates for the traveller', async () => {
+  const page = await ctx.newPage();
+  await page.goto(`${SITE}/angular.html`);
+  const r = await fill(page);
+  assert.equal(r.ok, true, r.message);
+  assert.equal(await val(page, '#given'), 'ANANYA RAVI');
+  assert.equal(await val(page, '#family'), 'SHARMA');
+  assert.equal(await val(page, '#ppn'), 'Z9100234');
+  // Typed, and the list is open, but only the traveller's pick makes it count: amber, with a note.
+  assert.equal(await val(page, '#nat'), 'India');
+  assert.equal(await page.evaluate(() => window.picked), null);
+  // A calendar-only box cannot be typed into: listed for the traveller, with the date to pick.
+  assert.equal(await val(page, '#dob'), '');
+  const text = await page.locator('#rihla-filler-panel').evaluate((h) => h.shadowRoot.textContent);
+  assert.match(text, /Choose “India” from the list that opens/);
+  assert.match(text, /Fill these yourself.*Date of birth14\/06\/1992Pick this date in the calendar/);
+  if (shots) await page.screenshot({ path: join(shots, 'picker.png'), fullPage: true });
+  await page.close();
+});
+
 test('the popup shows who is loaded, and the app can make the extension forget', async () => {
   const popup = await ctx.newPage();
   await popup.setViewportSize({ width: 360, height: 520 });

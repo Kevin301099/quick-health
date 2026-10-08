@@ -5,6 +5,7 @@
   "description": "Rihla: file your UAE visa with an AI agent. Upload documents, watch the agent work in a browser, step in only when needed.",
   "scripts": {
     "dev": "next dev --webpack",
+    "try": "node scripts/try-local.mjs",
     "build": "next build --webpack",
     "start": "npx serve out",
     "typecheck": "tsc --noEmit",

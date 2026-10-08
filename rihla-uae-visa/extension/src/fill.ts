@@ -201,6 +201,10 @@ function accepts(el: HTMLInputElement, mime: string, name: string) {
   });
 }
 
+/** A box that opens a list to pick from. Typing may not count on its own until an option is chosen. */
+const isPicker = (el: Element) =>
+  el.getAttribute('role') === 'combobox' || el.hasAttribute('aria-autocomplete') || el.getAttribute('aria-haspopup') === 'listbox' || el.hasAttribute('list') || !!el.closest('[role="combobox"]');
+
 const isPlaceholderOption = (sel: HTMLSelectElement) => {
   const o = sel.options[sel.selectedIndex];
   return !o || o.value === '' || /^(-+|select|choose|please|اختر|--)/i.test(clean(o.text));
@@ -383,9 +387,11 @@ function pass(pack: Pack, report: FrameReport) {
     remember(box);
     setText(box, text);
     const took = normalise(box.value) === normalise(text);
-    const sure = f.sure && took && f.key !== 'issuingCountry';
+    const picker = isPicker(box);
+    const sure = f.sure && took && !picker && f.key !== 'issuingCountry';
+    const note = !took ? 'The site changed what we typed. Check it.' : picker ? `Choose “${item.value}” from the list that opens.` : undefined;
     report.filled++;
-    report.items.push({ ...item, state: sure ? 'filled' : 'check', note: took ? undefined : 'The site changed what we typed. Check it.', ref: mark(box, sure ? 'filled' : 'check') });
+    report.items.push({ ...item, state: sure ? 'filled' : 'check', note, ref: mark(box, sure ? 'filled' : 'check') });
   }
 
   // Radio groups: sex and passport type are the only ones we answer. Declarations stay with the traveller.
