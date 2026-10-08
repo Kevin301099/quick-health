@@ -18,8 +18,8 @@ Three parts:
 
 Open a terminal in the `rihla-uae-visa` folder:
 
-- **Windows:** open the folder in File Explorer, click the address bar, type `powershell` and press Enter.
-- **Mac:** right-click the folder in Finder, then Services, then New Terminal at Folder.
+- **Windows:** open the folder in File Explorer, click the address bar, type `cmd` and press Enter. Use Command Prompt rather than PowerShell, which often refuses to run `npm`.
+- **Mac:** open the Terminal app, type `cd ` (with a space), drag the `rihla-uae-visa` folder into the window, and press Enter.
 
 Then run:
 
@@ -88,9 +88,17 @@ Finish the 5-year visa route back in Rihla:
 - **Ops console:** open http://localhost:3000/#ops and sign in as `ops@rihla.test`.
 - **Automatic passport reading** uses your own Anthropic key, about US$0.02 per passport. Stop with Ctrl+C, then start again with the key:
 
+  Mac or Linux:
+
   ```
-  ANTHROPIC_API_KEY=sk-ant-... npm run try        (Mac, Linux)
-  $env:ANTHROPIC_API_KEY="sk-ant-..."; npm run try (Windows PowerShell)
+  ANTHROPIC_API_KEY=sk-ant-... npm run try
+  ```
+
+  Windows (Command Prompt), two lines:
+
+  ```
+  set "ANTHROPIC_API_KEY=sk-ant-..."
+  npm run try
   ```
 
 ## Part 2: On the real official website
@@ -133,3 +141,4 @@ The extension tests need Chromium. They find Playwright's copy, or the one at `C
 - **"This page does not allow extensions to fill it".** Browsers block extensions on some pages, such as other extensions' pages and the browser's own pages. Use **Copy your details** in Rihla instead.
 - **No sign-in email.** The code is printed in the terminal window, not sent to your inbox.
 - **`npm` is not recognised.** Node.js is not installed, or the terminal was opened before you installed it. Install it and open a new terminal.
+- **"running scripts is disabled on this system"** (Windows PowerShell). Use Command Prompt instead: type `cmd` in the folder's address bar.
